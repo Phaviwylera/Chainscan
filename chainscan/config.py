@@ -146,6 +146,7 @@ def load(path: str) -> Config:
                          model_id=a.get("model_id", ""), max_tokens=int(a.get("max_tokens", 2500)))
     ing = raw.get("ingest") or {}
     return Config(chains=chains, btc=btc, analyst=analyst,
-                  ingest_workers=int(ing.get("workers", 0)), ingest_chunk_mb=int(ing.get("chunk_mb", 64)),
+                  ingest_workers=int(os.environ.get("CHAINSCAN_INGEST_WORKERS") or ing.get("workers", 0)),
+                  ingest_chunk_mb=int(os.environ.get("CHAINSCAN_CHUNK_MB") or ing.get("chunk_mb", 64)),
                   btc_buckets=int(ing.get("btc_buckets", 64)),
                   progress_every_s=float(raw.get("progress_every_s", 2.0)))
