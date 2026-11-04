@@ -25,6 +25,8 @@ class EP:
         self.idx = idx
         self.last_cut = 0.0
         self.recent_rl = []
+        self.max_batch = 10 ** 9   # learned: largest batch this endpoint accepts (gas cap, body size, timeouts)
+        self.park_level = 0
 
     def label(self):
         u = self.url.split("//")[-1].split("/")[0]
@@ -32,6 +34,7 @@ class EP:
 
     def snapshot(self):
         return {"endpoint": self.label(), "limit": round(self.limit, 1), "max": self.max,
+                "max_batch": self.max_batch if self.max_batch < 10 ** 9 else None,
                 "inflight": self.inflight, "ok": self.ok, "errors": self.err,
                 "rate_limited": self.rate_limited, "latency_ms": round(self.lat * 1000),
                 "parked": self.cool_until > time.time()}
@@ -51,8 +54,15 @@ class EndpointPool:
             while True:
                 now = time.time()
                 best, score = None, None
+                lats = [e.lat for e in self.eps if e.ok and e.lat > 0]
+                fastest = min(lats) if lats else 0
                 for e in self.eps:
-                    if e.cool_until > now or e.inflight >= int(e.limit):
+                    lim = int(e.limit)
+                    # an endpoint that is many times slower than the best one only gets a single call,
+                    # so it can't hold back the end of a scan
+                    if fastest and e.lat > 4.0 and e.lat > 5 * fastest:
+                        lim = min(lim, 1)
+                    if e.cool_until > now or e.inflight >= lim:
                         continue
                     s = e.inflight / e.limit
                     if score is None or s < score:
@@ -70,10 +80,12 @@ class EndpointPool:
         async with self.cond:
             e.inflight -= 1
             if outcome in ("ok", "neutral"):
-                e.ok += 1
                 e.consec_err = 0
-                e.lat = latency if e.lat == 0 else e.lat * 0.9 + latency * 0.1
+                if latency > 0:
+                    e.lat = latency if e.lat == 0 else e.lat * 0.9 + latency * 0.1
                 if outcome == "ok":
+                    e.ok += 1
+                    e.park_level = 0
                     e.limit = min(e.max, e.limit + 1.0 / e.limit)
             elif outcome == "rate_limited":
                 # Many in-flight requests fail together when a provider throttles. Cut the limit
@@ -94,8 +106,9 @@ class EndpointPool:
                 if now - e.last_cut > max(0.5, e.lat * 1.5):
                     e.limit = max(1.0, e.limit * 0.7)
                     e.last_cut = now
-                if e.consec_err >= 8:
-                    e.cool_until = now + 30.0
+                if e.consec_err >= 8:  # keeps failing: park it, longer each time (30 s, 60 s, ... 10 min)
+                    e.cool_until = now + min(600.0, 30.0 * 2 ** e.park_level)
+                    e.park_level += 1
                     e.consec_err = 0
             self.cond.notify_all()
 

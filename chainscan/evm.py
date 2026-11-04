@@ -30,6 +30,13 @@ class RpcFailed(Exception):
     pass
 
 
+class CutTo(Exception):
+    """The chosen endpoint is known to accept only smaller batches."""
+    def __init__(self, k):
+        super().__init__(k)
+        self.k = k
+
+
 def _bidx(name):
     try:
         return int(name.split("_b")[-1])
@@ -132,6 +139,9 @@ class ChainAgent:
         hard = rl = 0
         while hard < 6 and rl < 60:
             ep = await self.pool.acquire()
+            if n > ep.max_batch:
+                await self.pool.release(ep, "neutral")
+                raise CutTo(ep.max_batch)
             t0 = time.time()
             outcome = "error"
             try:
@@ -139,12 +149,12 @@ class ChainAgent:
                 outcome = "ok"
                 self.calls += 1
                 return self._decode(res, n)
-            except SplitNeeded:
+            except (SplitNeeded, asyncio.TimeoutError) as e:
                 outcome = "neutral"
-                raise
-            except asyncio.TimeoutError:
-                outcome = "neutral"
-                raise SplitNeeded("timeout")
+                if self._learn_limit(ep, n):
+                    last = e
+                    continue          # another endpoint can take this size: retry there
+                raise SplitNeeded(str(e) or "timeout")
             except (RpcFailed, aiohttp.ClientError, json.JSONDecodeError, ValueError) as e:
                 msg = str(e).lower()
                 last = e
@@ -164,6 +174,8 @@ class ChainAgent:
                             pass
                 elif any(h in msg for h in SPLIT_HINTS) and n > 1:
                     outcome = "neutral"
+                    if self._learn_limit(ep, n):
+                        continue
                     raise SplitNeeded(msg)
                 else:
                     hard += 1
@@ -174,6 +186,13 @@ class ChainAgent:
         if rl >= 60:
             raise RpcFailed(f"still rate limited after {rl} retries")
         raise SplitNeeded(f"gave up after retries: {last}")
+
+    def _learn_limit(self, ep, n):
+        """This endpoint refused a batch of n: remember a smaller limit for it alone.
+        Returns True when some other healthy endpoint is still allowed this size."""
+        ep.max_batch = max(self.c.min_addresses_per_call, min(ep.max_batch, int(n * 0.8)))
+        # a short rate-limit pause doesn't disqualify an endpoint; one parked for repeated errors does
+        return any(e is not ep and e.max_batch >= n and e.park_level == 0 for e in self.pool.eps)
 
     def _decode(self, res_hex: str, n: int):
         b = bytes.fromhex(res_hex[2:] if res_hex.startswith("0x") else res_hex)
@@ -198,6 +217,10 @@ class ChainAgent:
             return
         try:
             entries = await self._scan_call(chunk)
+        except CutTo as c:  # split to that endpoint's size; the pieces can still go to any endpoint
+            k = max(1, c.k) * 20
+            await asyncio.gather(*[self._process(st, chunk[i:i + k]) for i in range(0, len(chunk), k)])
+            return
         except RpcFailed:  # throttled for too long: keep the batch for a retry run, don't split
             st["failed"].append(chunk)
             self.failed += n
@@ -211,16 +234,17 @@ class ChainAgent:
                 return
             self.splits += 1
             self.ok_streak = 0
-            # remember that this size is too big so batches never grow back past it
-            self.apc_max = max(self.c.min_addresses_per_call, min(self.apc_max, int(n * 0.8)))
+            # cap batches at the largest size any working endpoint still accepts
+            live = [e.max_batch for e in self.pool.eps if e.park_level == 0] or [e.max_batch for e in self.pool.eps]
+            self.apc_max = max(self.c.min_addresses_per_call, min(self.apc_max, max(live)))
             self.apc = max(self.c.min_addresses_per_call, min(self.apc, n // 2, self.apc_max))
             h = (n // 2) * 20
             await self._process(st, chunk[:h])
             await self._process(st, chunk[h:])
             return
         self.ok_streak += 1
-        if self.ok_streak >= 40 and self.apc < self.apc_max:
-            self.apc = min(self.apc_max, int(self.apc * 1.15) + 1)
+        if self.ok_streak >= 20 and self.apc < self.apc_max:   # grow back quickly after a split
+            self.apc = min(self.apc_max, int(self.apc * 1.25) + 1)
             self.ok_streak = 0
         bad = set()
         for idx, t, failed, bal in entries:

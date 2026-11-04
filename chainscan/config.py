@@ -6,6 +6,8 @@ from typing import List, Optional
 
 import yaml
 
+from .keccak import checksum_ok
+
 
 @dataclass
 class Endpoint:
@@ -33,7 +35,7 @@ class ChainCfg:
     assets: List[Asset]
     gas_budget: int = 40_000_000      # gas one eth_call may use; most nodes cap at 50M
     gas_per_asset: int = 4_500        # rough cost of one balance lookup, used to size batches
-    max_addresses_per_call: int = 3_000
+    max_addresses_per_call: int = 3_000  # endpoints that accept less learn their own limit
     min_addresses_per_call: int = 25  # below this a failing batch is recorded as failed
     call_gas: Optional[int] = None    # pass an explicit gas value in eth_call (some providers need it)
     timeout_s: float = 60.0
@@ -88,12 +90,15 @@ def _endpoints(lst) -> List[Endpoint]:
 
 def _endpoints_env(lst):
     """Expand ${ENV_VARS} in RPC URLs and drop entries whose variable is not set."""
-    out = []
+    out, seen = [], set()
     for e in lst or []:
         e = {"url": e} if isinstance(e, str) else dict(e)
         url = os.path.expandvars(str(e.get("url", "")))
-        if not url or "${" in url or url.startswith("$"):
-            continue
+        if not url or "${" in url or "$" in url.split("//")[-1] or url.rstrip("/").endswith("/v2"):
+            continue           # variable not set (or an empty key at the end of an Alchemy URL)
+        if url.rstrip("/") in seen:
+            continue           # same endpoint listed twice (e.g. ETH_RPC_URL and the ALCHEMY_KEY template)
+        seen.add(url.rstrip("/"))
         e["url"] = url
         out.append(e)
     return out
@@ -127,6 +132,9 @@ def load(path: str) -> Config:
             if a.address is not None and not re.fullmatch(r"0x[0-9a-fA-F]{40}", str(a.address)):
                 raise SystemExit(f"config: chain '{key}' asset {a.symbol} has an invalid contract address "
                                  f"{a.address!r} (need 0x + 40 hex characters)")
+            if a.address is not None and not checksum_ok(a.address):
+                raise SystemExit(f"config: chain '{key}' asset {a.symbol} address {a.address} fails its EIP-55 "
+                                 "checksum, so it is probably mistyped")
         eps = _endpoints(c.get("rpcs"))
         if not eps:
             raise SystemExit(f"config: chain '{key}' has no rpcs")

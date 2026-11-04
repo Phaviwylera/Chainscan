@@ -12,13 +12,13 @@
 :root{
   --bg:#f3f4f7; --panel:#fff; --ink:#151a24; --muted:#5d6577; --line:#dde1e9; --track:#e3e6ee;
   --accent:#4655d4; --accent-ink:#fff; --good:#13804f; --warn:#a8650b; --bad:#c23a3a;
-  --eth:#5a67d8; --bsc:#b7860b; --btc:#d1700f; --base:#1f5fe0; --viz:#eef0f6;
+  --eth:#5a67d8; --bsc:#b7860b; --btc:#d1700f; --base:#1f5fe0; --polygon:#7b3fe4; --arbitrum:#1b8fd6; --optimism:#e0262f; --avalanche:#c9353b; --viz:#eef0f6;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
   --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; color-scheme:light}
 @media (prefers-color-scheme:dark){:root{
   --bg:#0f1218; --panel:#171b24; --ink:#e7eaf2; --muted:#98a0b3; --line:#2a303d; --track:#2a3040;
   --accent:#8592ff; --accent-ink:#0f1218; --good:#3fca8a; --warn:#e9a640; --bad:#f07070;
-  --eth:#8f9bff; --bsc:#f0c24a; --btc:#f7a04b; --base:#6f9cff; --viz:#11151d; color-scheme:dark}}
+  --eth:#8f9bff; --bsc:#f0c24a; --btc:#f7a04b; --base:#6f9cff; --polygon:#a77bff; --arbitrum:#4fb6f5; --optimism:#ff5c63; --avalanche:#f2787c; --viz:#11151d; color-scheme:dark}}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
@@ -92,6 +92,11 @@ pre.log{margin:0;max-height:220px;overflow:auto;background:var(--bg);border:1px 
 .step .bar{grid-column:2/4;height:6px}
 .step .meta{grid-column:2/4;font:12px var(--mono);color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 14px}
 .step .meta b{color:var(--ink);font-weight:600}
+.step .eps{grid-column:2/4;display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:2px}
+.ep{font:11px var(--mono);padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.ep.ok{border-color:color-mix(in srgb,var(--good) 45%,var(--line));color:var(--ink)}
+.ep.warn{border-color:color-mix(in srgb,var(--warn) 55%,var(--line))}
+.ep.bad{border-color:color-mix(in srgb,var(--bad) 55%,var(--line));color:var(--bad)}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 </style>
 </head>
@@ -162,7 +167,7 @@ pre.log{margin:0;max-height:220px;overflow:auto;background:var(--bg);border:1px 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const VARS = {eth:"--eth", bsc:"--bsc", btc:"--btc", base:"--base"};
+  const VARS = {eth:"--eth", bsc:"--bsc", btc:"--btc", base:"--base", polygon:"--polygon", arbitrum:"--arbitrum", optimism:"--optimism", avalanche:"--avalanche"};
   const cvar = k => (getComputedStyle(document.documentElement).getPropertyValue(VARS[k] || "--accent") || "#4655d4").trim();
   let token = ""; try{ token = localStorage.getItem("cs_token") || ""; }catch{}
   let info = null, sel = null, tab = "file", pollT = null, viz = null, local = null;
@@ -318,14 +323,20 @@ pre.log{margin:0;max-height:220px;overflow:auto;background:var(--bg);border:1px 
       <span class="nm">${s.dot ? `<i class="dot" style="background:var(${VARS[s.dot]||"--accent"})"></i>` : ""}${esc(s.name)}</span>
       <span class="pc">${s.state === "waiting" ? "" : pct.toFixed(pct >= 99.95 || pct === 0 ? 0 : 1) + "%"}</span>
       <div class="bar"><i style="width:${Math.min(100, pct)}%;background:${s.state === "failed" ? "var(--bad)" : s.state === "done" ? "var(--good)" : s.dot ? `var(${VARS[s.dot]})` : "var(--accent)"}"></i></div>
-      <div class="meta">${(s.meta || []).filter(Boolean).map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join("")}</div></div>`;
+      <div class="meta">${(s.meta || []).filter(Boolean).map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join("")}</div>${s.eps ? `<div class="eps">${s.eps}</div>` : ""}</div>`;
   }
   const scanSteps = (chains, prog, jobState) => chains.map(([k, n]) => {
     const c = prog && prog.chains && prog.chains.find(x => x.chain === k);
     if(!c) return {name: `Scan ${n}`, state: "waiting", dot: k, meta: [["", "waiting for the step above"]]};
     const done = c.status === "done";
     const st = done ? "done" : (jobState === "failed" || jobState === "stopped" || jobState === "interrupted") ? "failed" : "active";
-    return {name: `Scan ${n}`, state: st, pct: c.pct, dot: k, meta: [
+    const eps = (c.endpoints || []).map(e => {
+      const host = e.endpoint.replace(/^(www\.)/, "").split(".").slice(0, 2).join(".");
+      const cls = e.parked ? "bad" : e.errors > e.ok && e.errors > 2 ? "bad" : e.rate_limited > e.ok ? "warn" : e.ok ? "ok" : "";
+      const why = e.parked ? (e.errors > e.rate_limited ? "paused: errors" : "paused: rate limited") : e.rate_limited ? `${fmt(e.rate_limited)} throttled` : e.errors ? `${fmt(e.errors)} errors` : "";
+      return `<span class="ep ${cls}" title="${esc(e.endpoint)}">${esc(host)} · ${fmt(e.ok)} calls${e.inflight ? ` · ${e.inflight} live` : ""}${why ? " · " + why : ""}${e.max_batch ? ` · ≤${fmt(e.max_batch)}/call` : ""}</span>`;
+    }).join("");
+    return {name: `Scan ${n}`, state: st, pct: c.pct, dot: k, eps, meta: [
       ["", `${fmt(c.done)} / ${fmt(c.total)} addresses`], ["speed", done ? `${fmt(c.total / Math.max(c.seconds, .1))}/s avg` : `${fmt(c.rate_per_s)}/s`],
       ["ETA", done ? "done" : secs(c.eta_s)], ["funded", fmt(c.funded_entries)], c.failed ? ["failed", fmt(c.failed)] : null,
       ["time", secs(c.seconds)], c.status && !done && c.status !== "scanning" ? ["", c.status] : null]};

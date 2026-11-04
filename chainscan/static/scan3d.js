@@ -57,18 +57,21 @@
     }
 
     function layout() {
+      // up to 4 chains per row, so 8 chains fit as two rows instead of one long strip
       const list = [...chains.values()];
-      let x = 0;
-      const widths = list.map(c => c.side + 3);
-      const total = widths.reduce((a, b) => a + b, 0) - 3;
+      const perRow = list.length <= 4 ? list.length : Math.ceil(list.length / 2);
+      const cell = 19, rows = Math.ceil(list.length / Math.max(1, perRow));
       list.forEach((c, i) => {
-        c.origin = new T.Vector3(-total / 2 + x, 0, -c.side / 2);
+        const r = Math.floor(i / perRow), k = i % perRow, inRow = Math.min(perRow, list.length - r * perRow);
+        const x = (k - (inRow - 1) / 2) * cell - c.side / 2 + .5;
+        const z = (r - (rows - 1) / 2) * (cell + 3) - c.side / 2;
+        c.origin = new T.Vector3(x, 0, z);
         c.mesh.position.copy(c.origin);
         c.label.position.set(c.origin.x + c.side / 2 - .5, 0.2, c.origin.z + c.side + 1.8);
-        x += widths[i];
       });
-      radius = Math.max(18, total * 0.62 + 6);
-      target.set(0, 0, 1.5);
+      const W = perRow * cell, D = rows * (cell + 3);
+      radius = Math.max(18, Math.max(W * 0.66, D * 1.15) + 8);
+      target.set(0, 0, rows > 1 ? 3.5 : 1.5);
     }
 
     function ensure(key, name, n, colorStr) {
