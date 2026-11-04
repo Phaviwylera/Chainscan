@@ -1,5 +1,6 @@
 """Config loading. Everything has a default except RPC URLs, which you supply."""
 import os
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -122,6 +123,10 @@ def load(path: str) -> Config:
             continue
         assets = [Asset(symbol=a["symbol"], decimals=int(a.get("decimals", 18)), address=a.get("address"))
                   for a in c.get("assets", [])]
+        for a in assets:
+            if a.address is not None and not re.fullmatch(r"0x[0-9a-fA-F]{40}", str(a.address)):
+                raise SystemExit(f"config: chain '{key}' asset {a.symbol} has an invalid contract address "
+                                 f"{a.address!r} (need 0x + 40 hex characters)")
         eps = _endpoints(c.get("rpcs"))
         if not eps:
             raise SystemExit(f"config: chain '{key}' has no rpcs")

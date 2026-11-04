@@ -63,7 +63,7 @@ chains:
   #   rpcs: [{url: https://base-mainnet.g.alchemy.com/v2/YOUR_KEY, max_concurrency: 32}]
   #   assets:
   #     - {symbol: ETH,  decimals: 18}
-  #     - {symbol: USDC, decimals: 6, address: "0x833589fCD6eDb6E08f4c7C32D04b6Fd2BEf3C59"}
+  #     - {symbol: USDC, decimals: 6, address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"}
 
 btc:
   enabled: true
