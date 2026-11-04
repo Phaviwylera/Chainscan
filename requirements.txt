@@ -1,0 +1,5 @@
+numpy>=1.26
+aiohttp>=3.9
+pyyaml>=6.0
+duckdb>=1.0
+boto3>=1.34   # only for the optional AnalystAgent (Claude on Bedrock)

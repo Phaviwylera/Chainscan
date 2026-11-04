@@ -1,0 +1,52 @@
+# Config used by the Render web service. RPC URLs come from environment variables; an entry whose
+# variable is not set is skipped, so the public fallbacks below keep it working with no keys at all.
+#   ETH_RPC_URL, ETH_RPC_URL_2   e.g. https://eth-mainnet.g.alchemy.com/v2/KEY
+#   BSC_RPC_URL, BSC_RPC_URL_2   e.g. https://bnb-mainnet.g.alchemy.com/v2/KEY
+#   BTC_ESPLORA_URL              your own electrs/mempool API, e.g. https://btc.example.com/api
+#   BTC_SNAPSHOT_PATH            UTXO dump on the disk, e.g. /data/utxo.csv (switch btc.mode to snapshot)
+ingest:
+  workers: 0
+  chunk_mb: 32
+progress_every_s: 3
+
+chains:
+  eth:
+    name: Ethereum
+    explorer: https://etherscan.io/address/
+    rpcs:
+      - {url: "${ETH_RPC_URL}", max_concurrency: 64}
+      - {url: "${ETH_RPC_URL_2}", max_concurrency: 64}
+      - {url: "https://ethereum-rpc.publicnode.com", max_concurrency: 6}
+      - {url: "https://eth.drpc.org", max_concurrency: 4}
+    assets:
+      - {symbol: ETH,  decimals: 18}
+      - {symbol: USDT, decimals: 6,  address: "0xdAC17F958D2ee523a2206206994597C13D831ec7"}
+      - {symbol: USDC, decimals: 6,  address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"}
+      - {symbol: WBTC, decimals: 8,  address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"}
+  bsc:
+    name: BNB Chain
+    explorer: https://bscscan.com/address/
+    rpcs:
+      - {url: "${BSC_RPC_URL}", max_concurrency: 64}
+      - {url: "${BSC_RPC_URL_2}", max_concurrency: 64}
+      - {url: "https://bsc-rpc.publicnode.com", max_concurrency: 6}
+      - {url: "https://bsc-dataseed.bnbchain.org", max_concurrency: 4}
+    assets:
+      - {symbol: BNB,  decimals: 18}
+      - {symbol: USDT, decimals: 18, address: "0x55d398326f99059fF775485246999027B3197955"}
+      - {symbol: USDC, decimals: 18, address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"}
+      - {symbol: BTCB, decimals: 18, address: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c"}
+
+btc:
+  enabled: true
+  mode: esplora
+  snapshot_path: "${BTC_SNAPSHOT_PATH}"
+  esplora:
+    - {url: "${BTC_ESPLORA_URL}", max_concurrency: 128}
+    - {url: "https://blockstream.info/api", max_concurrency: 6}
+    - {url: "https://mempool.space/api", max_concurrency: 6}
+
+analyst:
+  enabled: false
+  region: "${AWS_REGION}"
+  model_id: "${BEDROCK_MODEL_ID}"

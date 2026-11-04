@@ -1,0 +1,88 @@
+# chainscan config. Copy to config.yaml and put your RPC URLs in.
+#
+# Throughput comes from RPC capacity. Each endpoint gets an adaptive concurrency limit
+# (starts at max_concurrency/4, grows while healthy, halves on rate limits), so list a paid
+# endpoint with a high max_concurrency and free ones with low values as overflow.
+
+ingest:
+  workers: 0          # 0 = one process per CPU core
+  chunk_mb: 64        # read size per step; memory stays flat for any file size
+  btc_buckets: 64
+
+progress_every_s: 2
+
+chains:
+  eth:
+    name: Ethereum
+    explorer: https://etherscan.io/address/
+    rpcs:
+      - url: https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
+        max_concurrency: 48
+      - url: https://ethereum-rpc.publicnode.com
+        max_concurrency: 6
+    gas_budget: 40000000          # per eth_call; most nodes cap at 50M (geth default)
+    gas_per_asset: 4500           # used to size batches: ~2,200 addresses/call with 4 assets
+    max_addresses_per_call: 3000
+    assets:
+      - {symbol: ETH,  decimals: 18}                                                  # native coin
+      - {symbol: USDT, decimals: 6,  address: "0xdAC17F958D2ee523a2206206994597C13D831ec7"}
+      - {symbol: USDC, decimals: 6,  address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"}
+      - {symbol: WBTC, decimals: 8,  address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"}
+
+  bsc:
+    name: BNB Chain
+    explorer: https://bscscan.com/address/
+    rpcs:
+      - url: https://bnb-mainnet.g.alchemy.com/v2/YOUR_KEY
+        max_concurrency: 48
+      - url: https://bsc-rpc.publicnode.com
+        max_concurrency: 6
+    gas_budget: 40000000
+    gas_per_asset: 4500
+    assets:
+      - {symbol: BNB,  decimals: 18}
+      - {symbol: USDT, decimals: 18, address: "0x55d398326f99059fF775485246999027B3197955"}
+      - {symbol: USDC, decimals: 18, address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"}
+      - {symbol: BTCB, decimals: 18, address: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c"}
+
+  # Any other EVM chain works the same way. Uncomment and add RPCs:
+  # polygon:
+  #   name: Polygon
+  #   rpcs: [{url: https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY, max_concurrency: 32}]
+  #   assets:
+  #     - {symbol: POL,  decimals: 18}
+  #     - {symbol: USDT, decimals: 6, address: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"}
+  # arbitrum:
+  #   name: Arbitrum
+  #   rpcs: [{url: https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY, max_concurrency: 32}]
+  #   assets:
+  #     - {symbol: ETH,  decimals: 18}
+  #     - {symbol: USDT, decimals: 6, address: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9"}
+  # base:
+  #   name: Base
+  #   rpcs: [{url: https://base-mainnet.g.alchemy.com/v2/YOUR_KEY, max_concurrency: 32}]
+  #   assets:
+  #     - {symbol: ETH,  decimals: 18}
+  #     - {symbol: USDC, decimals: 6, address: "0x833589fCD6eDb6E08f4c7C32D04b6Fd2BEf3C59"}
+
+btc:
+  enabled: true
+  # snapshot: join against a UTXO dump from your own Bitcoin Core node (crores in minutes, no API).
+  #   bitcoin-cli dumptxoutset /data/utxo.dat  ->  bitcoin-utxo-dump -f address,amount -o utxo.csv
+  # esplora:  query Esplora servers per address (self-hosted electrs/mempool recommended for volume)
+  mode: snapshot
+  snapshot_path: /data/utxo.csv
+  snapshot_address_column: address
+  snapshot_amount_column: amount
+  snapshot_amount_unit: sats       # sats | btc
+  esplora:
+    - url: https://blockstream.info/api
+      max_concurrency: 8
+    # - url: http://localhost:3002   # your own electrs / mempool backend
+    #   max_concurrency: 256
+
+analyst:
+  enabled: false                   # true = run the report automatically after each scan
+  region: ap-south-1
+  model_id: ""                     # a Bedrock model or inference profile ID enabled in your account
+  max_tokens: 2500

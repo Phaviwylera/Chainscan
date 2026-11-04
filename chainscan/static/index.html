@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Chainscan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#f3f4f7; --panel:#fff; --ink:#151a24; --muted:#5d6577; --line:#dde1e9; --track:#e6e8f0;
+  --accent:#4655d4; --accent-ink:#fff; --good:#13804f; --warn:#a8650b; --bad:#c23a3a;
+  --eth:#5a67d8; --bsc:#b7860b; --btc:#d1700f;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; color-scheme:light}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1218; --panel:#171b24; --ink:#e7eaf2; --muted:#98a0b3; --line:#2a303d; --track:#232937;
+  --accent:#8592ff; --accent-ink:#0f1218; --good:#3fca8a; --warn:#e9a640; --bad:#f07070;
+  --eth:#8f9bff; --bsc:#f0c24a; --btc:#f7a04b; color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
+.wrap{max-width:1180px;margin:0 auto;padding:24px max(16px,env(safe-area-inset-right)) 60px max(16px,env(safe-area-inset-left));display:grid;gap:18px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px 16px}
+h1{margin:0;font-size:1.5rem;letter-spacing:-.01em}
+h2{margin:0;font-size:1rem}
+.muted{color:var(--muted)} .mono{font-family:var(--mono)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;display:grid;gap:14px;min-width:0}
+.grid{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.lbl{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+input[type=text],input[type=password],input[type=url],textarea{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:13px var(--mono)}
+textarea{min-height:120px;resize:vertical}
+input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button,.btn{font:600 14px var(--sans);border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 14px;cursor:pointer;text-decoration:none;display:inline-block}
+button:hover,.btn:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--muted);padding:6px 10px}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:4px 11px 4px 8px;font-size:.86rem;cursor:pointer}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.jobs{display:grid;gap:6px}
+.job{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:var(--panel)}
+.job.sel{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.job .n{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job .t{font:12px var(--mono);color:var(--muted)}
+.st{font:600 .7rem var(--sans);padding:2px 8px;border-radius:99px;border:1px solid currentColor;align-self:start;text-transform:uppercase;letter-spacing:.04em}
+.st.done{color:var(--good)} .st.running,.st.downloading{color:var(--accent)} .st.failed{color:var(--bad)}
+.st.queued,.st.stopped,.st.interrupted,.st.stopping{color:var(--warn)}
+.chain{display:grid;gap:6px;padding:12px;border:1px solid var(--line);border-radius:8px}
+.chain .top{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:.9rem}
+.bar{height:8px;background:var(--track);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;transition:width .3s}
+.kv{display:flex;flex-wrap:wrap;gap:4px 16px;font:12px var(--mono);color:var(--muted)}
+.kv b{color:var(--ink);font-weight:600}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font:13px var(--mono);font-variant-numeric:tabular-nums}
+th,td{padding:7px 11px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font:600 .7rem var(--sans);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--bg)}
+td.num{text-align:right}
+pre.log{margin:0;max-height:240px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all}
+.note{font-size:.83rem;color:var(--muted);margin:0}
+.err{color:var(--bad);font-size:.88rem;margin:0}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.gate{max-width:420px;margin:12vh auto;display:grid;gap:12px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="panel gate" id="gate" hidden>
+    <h1>Chainscan</h1>
+    <p class="muted" style="margin:0">Enter the access token set on this server (ACCESS_TOKEN).</p>
+    <input type="password" id="tok" placeholder="Access token" autocomplete="current-password">
+    <button class="primary" id="tokBtn">Open</button>
+    <p class="err" id="gateErr"></p>
+  </div>
+
+  <div id="main" hidden style="display:grid;gap:18px">
+    <header>
+      <div><h1>Chainscan</h1><div class="muted" id="infoLine">Loading server info…</div></div>
+      <button id="logout">Sign out</button>
+    </header>
+
+    <div class="grid">
+      <div style="display:grid;gap:18px">
+        <section class="panel">
+          <h2>New scan</h2>
+          <div class="tabs" role="tablist">
+            <button class="on" data-tab="file">Upload file</button>
+            <button data-tab="paste">Paste</button>
+            <button data-tab="url">File link</button>
+          </div>
+          <div data-pane="file">
+            <input type="file" id="file" accept=".txt,.csv,.tsv,.json,text/plain,text/csv">
+            <p class="note" style="margin-top:6px">Any text or CSV; 0x and Bitcoin addresses are found anywhere in it. For multi-GB files, a link is faster than uploading from your browser.</p>
+          </div>
+          <div data-pane="paste" hidden><textarea id="paste" placeholder="0x… or bc1… one per line"></textarea></div>
+          <div data-pane="url" hidden>
+            <input type="url" id="url" placeholder="https://…/wallets.csv (S3/GCS presigned link, Drive direct link, any HTTP URL)">
+            <p class="note" style="margin-top:6px">The server downloads the file itself, so a 10 GB file never goes through your browser.</p>
+          </div>
+          <div><div class="lbl" style="margin-bottom:6px">Chains</div><div class="row" id="chainBox"></div></div>
+          <input type="text" id="jobName" placeholder="Name (optional)">
+          <div class="row"><button class="primary" id="start">Start scan</button><span class="note" id="upMsg"></span></div>
+          <div class="bar" id="upBar" hidden><i style="background:var(--accent)"></i></div>
+        </section>
+        <section class="panel">
+          <div class="row" style="justify-content:space-between"><h2>Scans</h2><span class="note" id="jobCount"></span></div>
+          <div class="jobs" id="jobs"><div class="empty">No scans yet. Start one above.</div></div>
+        </section>
+      </div>
+      <section class="panel" id="detail"><div class="empty">Pick a scan to see live progress and results.</div></section>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const COLORS = {eth:"var(--eth)", bsc:"var(--bsc)", btc:"var(--btc)"};
+  let token = ""; try{ token = localStorage.getItem("cs_token") || ""; }catch{}
+  let info = null, sel = null, tab = "file", pollT = null;
+  const fmt = n => (n ?? 0).toLocaleString("en-IN");
+  const secs = s => s == null ? "--" : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.floor(s/60)}m ${String(Math.round(s%60)).padStart(2,"0")}s` : `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`;
+  const when = t => t ? new Date(t*1000).toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  async function api(path, opts = {}){
+    const r = await fetch(path, {...opts, headers:{...(opts.headers||{}), "X-Access-Token": token}});
+    if(r.status === 401){ showGate("That token was not accepted."); throw new Error("unauthorized"); }
+    const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ j = {error:t}; }
+    if(!r.ok) throw new Error(j.error || t || ("HTTP " + r.status));
+    return j;
+  }
+  function showGate(msg){ $("main").hidden = true; $("gate").hidden = false; $("gateErr").textContent = msg || ""; clearInterval(pollT); }
+  async function boot(){
+    if(!token) return showGate();
+    try{ info = await api("/api/info"); }catch(e){ if(e.message !== "unauthorized") showGate(e.message); return; }
+    $("gate").hidden = true; $("main").hidden = false;
+    const evm = info.chains.map(c => `${c.name}: ${c.assets.join(", ")}`).join(" · ");
+    $("infoLine").textContent = `${evm}${info.btc.enabled ? " · Bitcoin ("+info.btc.mode+")" : ""} · ${info.cpus} CPU · ${info.disk_free_gb} GB free`;
+    const keys = [...info.chains.map(c => [c.key, c.name]), ...(info.btc.enabled ? [["btc","Bitcoin"]] : [])];
+    $("chainBox").innerHTML = keys.map(([k,n]) => `<label class="chip"><input type="checkbox" value="${k}" checked><span class="dot" style="background:${COLORS[k]||"var(--accent)"}"></span>${esc(n)}</label>`).join("");
+    refresh(); clearInterval(pollT); pollT = setInterval(refresh, 2500);
+  }
+  $("tokBtn").onclick = () => { token = $("tok").value.trim(); try{ localStorage.setItem("cs_token", token); }catch{} boot(); };
+  $("tok").onkeydown = e => { if(e.key === "Enter") $("tokBtn").click(); };
+  $("logout").onclick = () => { token = ""; try{ localStorage.removeItem("cs_token"); }catch{} showGate(); };
+
+  document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+    tab = b.dataset.tab;
+    document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+    document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== tab);
+  });
+
+  function uploadFile(f){
+    return new Promise((res, rej) => {
+      const fd = new FormData(); fd.append("file", f);
+      const x = new XMLHttpRequest(); x.open("POST", "/api/upload"); x.setRequestHeader("X-Access-Token", token);
+      $("upBar").hidden = false;
+      x.upload.onprogress = e => { if(e.lengthComputable){ const p = e.loaded/e.total*100; $("upBar").firstElementChild.style.width = p.toFixed(1)+"%"; $("upMsg").textContent = `Uploading ${(e.loaded/1e6).toFixed(0)} / ${(e.total/1e6).toFixed(0)} MB`; } };
+      x.onload = () => { $("upBar").hidden = true; x.status < 300 ? res(JSON.parse(x.responseText)) : rej(new Error(x.responseText || "upload failed")); };
+      x.onerror = () => { $("upBar").hidden = true; rej(new Error("Upload interrupted. Check your connection, or use a file link.")); };
+      x.send(fd);
+    });
+  }
+  $("start").onclick = async () => {
+    const chains = [...document.querySelectorAll("#chainBox input:checked")].map(i => i.value);
+    if(!chains.length){ $("upMsg").textContent = "Pick at least one chain."; return; }
+    $("start").disabled = true; $("upMsg").textContent = "";
+    try{
+      const body = {chains, name: $("jobName").value.trim()};
+      if(tab === "file"){
+        const f = $("file").files[0]; if(!f) throw new Error("Choose a file first.");
+        const u = await uploadFile(f); body.upload_id = u.upload_id; body.upload_name = f.name;
+      } else if(tab === "paste"){
+        const t = $("paste").value; if(!t.trim()) throw new Error("Paste some addresses first.");
+        const u = await api("/api/upload", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({text:t})});
+        body.upload_id = u.upload_id; body.upload_name = "Pasted list";
+      } else {
+        const u = $("url").value.trim(); if(!u) throw new Error("Enter a file link first."); body.url = u;
+      }
+      const job = await api("/api/jobs", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body)});
+      sel = job.id; $("upMsg").textContent = "Scan queued."; $("file").value = ""; $("paste").value = ""; $("jobName").value = "";
+      refresh();
+    }catch(e){ $("upMsg").textContent = e.message; }
+    finally{ $("start").disabled = false; }
+  };
+
+  async function refresh(){
+    let list; try{ list = await api("/api/jobs"); }catch{ return; }
+    $("jobCount").textContent = list.length ? `${list.length} total` : "";
+    $("jobs").innerHTML = list.length ? list.map(j => `<div class="job ${j.id===sel?"sel":""}" data-id="${j.id}">
+        <span class="n">${esc(j.name || j.id)}</span><span class="st ${j.status}">${j.status}</span>
+        <span class="t">${when(j.created)} · ${esc((j.chains||[]).join(", "))}</span></div>`).join("")
+      : '<div class="empty">No scans yet. Start one above.</div>';
+    document.querySelectorAll(".job").forEach(el => el.onclick = () => { sel = el.dataset.id; refresh(); });
+    if(!sel && list.length) sel = list[0].id;
+    if(sel) renderDetail(sel);
+  }
+
+  async function act(path, method="POST"){ try{ await api(path, {method}); refresh(); }catch(e){ $("actMsg") && ($("actMsg").textContent = e.message); } }
+
+  async function renderDetail(id){
+    let d; try{ d = await api("/api/jobs/" + id); }catch{ return; }
+    if(id !== sel) return;
+    const j = d.job, p = d.progress, s = d.summary, ing = d.ingest;
+    let html = `<div class="row" style="justify-content:space-between"><div><h2>${esc(j.name || j.id)}</h2><div class="note mono">${j.id}</div></div><span class="st ${j.status}">${j.status}</span></div>`;
+    if(j.status === "downloading"){
+      const pct = j.download_total ? j.downloaded / j.download_total * 100 : 0;
+      html += `<div class="chain"><div class="top"><b>Downloading input</b><span class="mono">${(j.downloaded/1e9).toFixed(2)} GB${j.download_total ? " / "+(j.download_total/1e9).toFixed(2)+" GB" : ""}</span></div><div class="bar"><i style="width:${pct}%;background:var(--accent)"></i></div></div>`;
+    }
+    if(ing){
+      html += `<div class="kv"><span>Read <b>${(ing.bytes/1e9).toFixed(2)} GB</b></span><span>0x unique <b>${fmt(ing.evm_unique)}</b></span><span>BTC unique <b>${fmt(ing.btc_unique)}</b></span><span>Duplicates <b>${fmt((ing.evm_duplicates||0)+(ing.btc_duplicates||0))}</b></span><span>Malformed <b>${fmt(ing.invalid_hex)}</b></span><span>Ingest <b>${secs(ing.seconds)}</b></span></div>`;
+    } else if(j.status === "running"){
+      html += `<p class="note">Reading and deduplicating the input…</p>`;
+    }
+    if(p && p.chains){
+      for(const c of p.chains){
+        const col = COLORS[c.chain] || "var(--accent)";
+        const eps = (c.endpoints||[]).map(e => `${e.endpoint.split(".")[0]} ${e.inflight}/${Math.floor(e.limit)}${e.parked?" parked":""}${e.rate_limited?" · "+fmt(e.rate_limited)+" throttled":""}`).join(" · ");
+        html += `<div class="chain"><div class="top"><b><span class="dot" style="background:${col}"></span> ${esc(c.name)}</b><span class="mono">${fmt(c.done)} / ${fmt(c.total)} · ${c.pct}%</span></div>
+          <div class="bar"><i style="width:${c.pct}%;background:${col}"></i></div>
+          <div class="kv"><span>Speed <b>${fmt(c.rate_per_s)}/s</b></span><span>ETA <b>${c.status==="done"?"done":secs(c.eta_s)}</b></span><span>Funded <b>${fmt(c.funded_entries)}</b></span><span>Failed <b>${fmt(c.failed)}</b></span>${c.block?`<span>Block <b>${c.block}</b></span>`:""}${c.addresses_per_call?`<span>Batch <b>${fmt(c.addresses_per_call)}</b></span>`:""}</div>
+          ${eps?`<div class="note mono">${esc(eps)}</div>`:""}</div>`;
+      }
+    }
+    if(s && s.assets){
+      html += `<div class="tablebox"><table><thead><tr><th>Chain</th><th>Asset</th><th class="num">Funded addresses</th><th class="num">Total</th></tr></thead><tbody>${
+        s.assets.length ? s.assets.map(a => `<tr><td>${esc(a.chain)}</td><td>${esc(a.asset)}</td><td class="num">${fmt(a.funded_addresses)}</td><td class="num">${esc(a.total)}</td></tr>`).join("") : '<tr><td colspan="4" class="muted">No funded addresses found.</td></tr>'
+      }</tbody></table></div>`;
+    }
+    if(d.files.length){
+      html += `<div class="row">${d.files.map(f => `<a class="btn" href="/api/jobs/${j.id}/files/${f}?token=${encodeURIComponent(token)}">${esc(f)}</a>`).join("")}<a class="btn" href="/api/jobs/${j.id}/files/log.txt?token=${encodeURIComponent(token)}">log.txt</a></div>`;
+    }
+    if(j.error) html += `<p class="err">${esc(j.error)}</p>`;
+    const btns = [];
+    if(["running","queued","downloading"].includes(j.status)) btns.push(`<button data-a="stop">Stop</button>`);
+    if(["stopped","failed","interrupted"].includes(j.status)) btns.push(`<button class="primary" data-a="resume">Resume</button>`);
+    if(!["running","downloading","stopping"].includes(j.status)) btns.push(`<button data-a="delete">Delete</button>`);
+    html += `<div class="row">${btns.join("")}<span class="note" id="actMsg"></span></div>`;
+    if(d.log.length) html += `<div><div class="lbl" style="margin-bottom:6px">Log</div><pre class="log">${esc(d.log.join("\n"))}</pre></div>`;
+    $("detail").innerHTML = html;
+    $("detail").querySelectorAll("[data-a]").forEach(b => b.onclick = () => {
+      const a = b.dataset.a;
+      if(a === "delete"){
+        if(b.dataset.confirm){ act(`/api/jobs/${j.id}`, "DELETE"); sel = null; }
+        else { b.dataset.confirm = 1; b.textContent = "Click again to delete"; }
+      } else act(`/api/jobs/${j.id}/${a}`);
+    });
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
