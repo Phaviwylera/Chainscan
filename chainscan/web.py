@@ -52,7 +52,7 @@ def safe_id(s):
 
 @web.middleware
 async def auth(request, handler):
-    if request.path in ("/", "/healthz"):
+    if request.path in ("/", "/healthz") or request.path.startswith("/static/"):
         return await handler(request)
     if not TOKEN:
         return web.json_response({"error": "ACCESS_TOKEN is not set on the server"}, status=503)
@@ -94,6 +94,102 @@ async def upload(request):
     return web.json_response({"upload_id": uid, "name": name, "bytes": size})
 
 
+# ---------------- packed uploads (browser reads the file, sends only addresses) ----------------
+PART_KINDS = ("evm", "btc")
+
+
+def _pdir(uid):
+    return os.path.join(UPLOADS, safe_id(uid) + ".packed")
+
+
+async def packed_create(request):
+    body = await request.json()
+    uid = new_id()
+    d = _pdir(uid)
+    os.makedirs(d, exist_ok=True)
+    meta = {"upload_id": uid, "name": str(body.get("name", ""))[:200], "file_bytes": int(body.get("file_bytes", 0)),
+            "first_column": bool(body.get("first_column", True)), "created": time.time(),
+            "key": str(body.get("key", ""))[:300]}
+    with open(os.path.join(d, "upload.json"), "w") as f:
+        json.dump(meta, f)
+    return web.json_response(meta)
+
+
+async def packed_find(request):
+    """Find an unfinished upload of the same file so the browser can resume it."""
+    key = request.query.get("key", "")
+    if not key or not os.path.isdir(UPLOADS):
+        return web.json_response(None)
+    for name in sorted(os.listdir(UPLOADS), reverse=True):
+        if not name.endswith(".packed"):
+            continue
+        d = os.path.join(UPLOADS, name)
+        meta = read_json(os.path.join(d, "upload.json")) or {}
+        if meta.get("key") == key and not os.path.exists(os.path.join(d, "manifest.json")):
+            return web.json_response(packed_state(meta["upload_id"]))
+    return web.json_response(None)
+
+
+def packed_state(uid):
+    d = _pdir(uid)
+    meta = read_json(os.path.join(d, "upload.json")) or {}
+    parts = {k: [] for k in PART_KINDS}
+    nbytes = 0
+    for f in os.listdir(d):
+        if f.endswith(".part"):
+            kind, seq = f[:-5].split("_")
+            parts[kind].append(int(seq))
+            nbytes += os.path.getsize(os.path.join(d, f))
+    return {**meta, "parts": {k: sorted(v) for k, v in parts.items()}, "received_bytes": nbytes,
+            "finished": os.path.exists(os.path.join(d, "manifest.json"))}
+
+
+async def packed_get(request):
+    uid = safe_id(request.match_info["id"])
+    if not os.path.isdir(_pdir(uid)):
+        raise web.HTTPNotFound()
+    return web.json_response(packed_state(uid))
+
+
+async def packed_put(request):
+    uid = safe_id(request.match_info["id"])
+    kind = request.match_info["kind"]
+    seq = int(request.match_info["seq"])
+    d = _pdir(uid)
+    if kind not in PART_KINDS or seq < 0 or not os.path.isdir(d):
+        raise web.HTTPBadRequest(text="bad part")
+    if os.path.exists(os.path.join(d, "manifest.json")):
+        raise web.HTTPConflict(text="upload already finished")
+    final = os.path.join(d, f"{kind}_{seq:06d}.part")
+    tmp = final + f".{secrets.token_hex(4)}.tmp"
+    n = 0
+    with open(tmp, "wb") as f:
+        async for chunk in request.content.iter_chunked(1024 * 1024):
+            f.write(chunk)
+            n += len(chunk)
+    if kind == "evm" and n % 20:
+        os.remove(tmp)
+        raise web.HTTPBadRequest(text="evm part must be a multiple of 20 bytes")
+    os.replace(tmp, final)  # re-sending a part just overwrites it
+    return web.json_response({"ok": True, "bytes": n})
+
+
+async def packed_finish(request):
+    uid = safe_id(request.match_info["id"])
+    d = _pdir(uid)
+    body = await request.json()
+    st = packed_state(uid)
+    want = body.get("counts") or {}
+    missing = {k: [i for i in range(int(want.get(k, 0))) if i not in set(st["parts"][k])] for k in PART_KINDS}
+    if any(missing.values()):
+        return web.json_response({"error": "parts missing", "missing": missing}, status=409)
+    stats = {k: int(v) for k, v in (body.get("stats") or {}).items() if isinstance(v, (int, float))}
+    stats["file_bytes"] = st.get("file_bytes", 0)
+    with open(os.path.join(d, "manifest.json"), "w") as f:
+        json.dump({"upload_id": uid, "stats": stats, "counts": want, "finished_at": time.time()}, f)
+    return web.json_response({**packed_state(uid), "stats": stats})
+
+
 async def download_url(job):
     """Fetch a big input file server-side (S3/GCS presigned URL, Drive direct link, any HTTP URL)."""
     os.makedirs(UPLOADS, exist_ok=True)
@@ -124,7 +220,10 @@ async def create_job(request):
     if body.get("upload_id"):
         p = os.path.join(UPLOADS, safe_id(body["upload_id"]) + ".txt")
         if not os.path.exists(p):
-            raise web.HTTPBadRequest(text="upload not found")
+            p = _pdir(body["upload_id"])
+            if not os.path.exists(os.path.join(p, "manifest.json")):
+                raise web.HTTPBadRequest(text="upload not found or not finished")
+            job["packed"] = read_json(os.path.join(p, "manifest.json"))
         job["upload_id"] = body["upload_id"]
         job["input"] = p
         job["name"] = job["name"] or body.get("upload_name", "")
@@ -221,6 +320,7 @@ async def get_job(request):
     return web.json_response({"job": jobs[jid], "progress": read_json(os.path.join(d, "progress.json")),
                               "summary": read_json(os.path.join(d, "summary.json")),
                               "ingest": read_json(os.path.join(d, "ingest", "ingest.json")),
+                              "ingest_progress": read_json(os.path.join(d, "ingest", "progress.json")),
                               "log": tail(os.path.join(d, "log.txt")), "files": files})
 
 
@@ -273,7 +373,7 @@ async def delete_job(request):
     shutil.rmtree(os.path.join(RUNS, jid), ignore_errors=True)
     for p in (job.get("input"),):
         if p and p.startswith(UPLOADS) and os.path.exists(p):
-            os.remove(p)
+            shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
     jobs.pop(jid)
     save_jobs()
     return web.json_response({"deleted": jid})
@@ -295,7 +395,16 @@ async def info(request):
 
 
 async def index(request):
-    return web.FileResponse(os.path.join(os.path.dirname(__file__), "static", "index.html"))
+    return web.FileResponse(os.path.join(os.path.dirname(__file__), "static", "index.html"),
+                            headers={"Cache-Control": "no-cache"})
+
+
+async def static_file(request):
+    name = request.match_info["name"]
+    if name not in ("reader.js", "scan3d.js"):
+        raise web.HTTPNotFound()
+    return web.FileResponse(os.path.join(os.path.dirname(__file__), "static", name),
+                            headers={"Cache-Control": "no-cache"})
 
 
 async def healthz(request):
@@ -320,8 +429,14 @@ def main():
     app = web.Application(middlewares=[auth], client_max_size=1024 ** 4)
     app.router.add_get("/", index)
     app.router.add_get("/healthz", healthz)
+    app.router.add_get("/static/{name}", static_file)
     app.router.add_get("/api/info", info)
     app.router.add_post("/api/upload", upload)
+    app.router.add_post("/api/packed", packed_create)
+    app.router.add_get("/api/packed/find", packed_find)
+    app.router.add_get("/api/packed/{id}", packed_get)
+    app.router.add_put("/api/packed/{id}/{kind}/{seq}", packed_put)
+    app.router.add_post("/api/packed/{id}/finish", packed_finish)
     app.router.add_get("/api/jobs", list_jobs)
     app.router.add_post("/api/jobs", create_job)
     app.router.add_get("/api/jobs/{id}", get_job)

@@ -30,6 +30,13 @@ class RpcFailed(Exception):
     pass
 
 
+def _bidx(name):
+    try:
+        return int(name.split("_b")[-1])
+    except ValueError:
+        return None
+
+
 def _w32(n: int) -> bytes:
     return n.to_bytes(32, "big")
 
@@ -68,6 +75,9 @@ class ChainAgent:
         self.status = "waiting"
         self.buckets_total = 0
         self.buckets_done = 0
+        # per-bucket state for the live view: . empty, 0 waiting, 1 scanning, 2 done
+        self.grid = bytearray(b"." * 256)
+        self.grid_funded = [0] * 256
 
     # ---------- rpc ----------
     async def _post(self, ep, method, params):
@@ -237,6 +247,10 @@ class ChainAgent:
                         f.write("0x" + ch[i:i + 20].hex() + "\n")
         touch(os.path.join(self.out_dir, f"{b}.done"))
         self.buckets_done += 1
+        i = _bidx(b)
+        if i is not None:
+            self.grid[i] = ord("2")
+            self.grid_funded[i] = len(st["rows"])
 
     async def run(self, bucket_files):
         todo = []
@@ -245,11 +259,21 @@ class ChainAgent:
             size = os.path.getsize(p) // 20
             self.total += size
             self.buckets_total += 1
+            i = _bidx(b)
             if os.path.exists(os.path.join(self.out_dir, f"{b}.done")):
                 self.done += size
                 self.buckets_done += 1
+                if i is not None:
+                    self.grid[i] = ord("2")
+                    try:
+                        with open(os.path.join(self.out_dir, f"{b}.csv")) as f:
+                            self.grid_funded[i] = sum(1 for _ in f)
+                    except OSError:
+                        pass
             elif size:
                 todo.append((b, p))
+                if i is not None:
+                    self.grid[i] = ord("0")
         self.started = time.time()
         if not todo:
             self.status = "done"
@@ -266,6 +290,9 @@ class ChainAgent:
         async def producer():
             for b, p in todo:
                 data = open(p, "rb").read()
+                i = _bidx(b)
+                if i is not None:
+                    self.grid[i] = ord("1")
                 st = {"bucket": b, "rows": [], "failed": [], "pending": 0, "produced": False}
                 n = len(data) // 20
                 i = 0
@@ -308,4 +335,5 @@ class ChainAgent:
                 "calls": self.calls, "splits": self.splits, "addresses_per_call": self.apc,
                 "block": self.block, "blocks_used": self.blocks_used, "repins": self.repins,
                 "buckets": f"{self.buckets_done}/{self.buckets_total}", "seconds": round(el, 1),
+                "grid": self.grid.decode(), "grid_funded": self.grid_funded,
                 "endpoints": self.pool.snapshot()}

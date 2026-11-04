@@ -33,6 +33,8 @@ class BtcAgent:
         self.total = self.done = self.funded_entries = self.failed = self.calls = 0
         self.started = self.finished = None
         self.status = "waiting"
+        self.grid = None
+        self.grid_funded = None
 
     async def run(self, bucket_files):
         self.started = time.time()
@@ -126,12 +128,20 @@ class BtcAgent:
     async def _esplora(self, bucket_files):
         self.status = "querying esplora"
         workers = max(1, self.pool.capacity)
+        n = max([int(os.path.basename(p).split(".")[0].split("_b")[-1]) for p in bucket_files] + [63]) + 1
+        self.grid = bytearray(b"." * n)
+        self.grid_funded = [0] * n
+        for p in bucket_files:
+            self.grid[int(os.path.basename(p).split(".")[0].split("_b")[-1])] = ord("0")
         for p in bucket_files:
             b = os.path.basename(p).split(".")[0]
+            bi = int(b.split("_b")[-1])
             addrs = [a.strip() for a in open(p) if a.strip()]
             if os.path.exists(os.path.join(self.out_dir, f"{b}.done")):
                 self.done += len(addrs)
+                self.grid[bi] = ord("2")
                 continue
+            self.grid[bi] = ord("1")
             rows, failed = [], []
             q = asyncio.Queue()
             for a in addrs:
@@ -160,10 +170,13 @@ class BtcAgent:
                 with open(self.fail_path, "a") as f:
                     f.write("\n".join(failed) + "\n")
             touch(os.path.join(self.out_dir, f"{b}.done"))
+            self.grid[bi] = ord("2")
+            self.grid_funded[bi] = len(rows)
 
     def snapshot(self):
         el = (self.finished or time.time()) - (self.started or time.time())
         return {"chain": "btc", "name": "Bitcoin", "status": self.status, "mode": self.c.mode,
                 "total": self.total, "done": self.done, "funded_entries": self.funded_entries,
                 "failed": self.failed, "calls": self.calls, "seconds": round(el, 1),
+                "grid": self.grid.decode() if self.grid else None, "grid_funded": self.grid_funded,
                 "endpoints": self.pool.snapshot() if self.pool else []}

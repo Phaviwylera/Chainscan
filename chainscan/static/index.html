@@ -7,28 +7,29 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 :root{
-  --bg:#f3f4f7; --panel:#fff; --ink:#151a24; --muted:#5d6577; --line:#dde1e9; --track:#e6e8f0;
+  --bg:#f3f4f7; --panel:#fff; --ink:#151a24; --muted:#5d6577; --line:#dde1e9; --track:#e3e6ee;
   --accent:#4655d4; --accent-ink:#fff; --good:#13804f; --warn:#a8650b; --bad:#c23a3a;
-  --eth:#5a67d8; --bsc:#b7860b; --btc:#d1700f; --base:#1f5fe0;
+  --eth:#5a67d8; --bsc:#b7860b; --btc:#d1700f; --base:#1f5fe0; --viz:#eef0f6;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
   --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; color-scheme:light}
 @media (prefers-color-scheme:dark){:root{
-  --bg:#0f1218; --panel:#171b24; --ink:#e7eaf2; --muted:#98a0b3; --line:#2a303d; --track:#232937;
+  --bg:#0f1218; --panel:#171b24; --ink:#e7eaf2; --muted:#98a0b3; --line:#2a303d; --track:#2a3040;
   --accent:#8592ff; --accent-ink:#0f1218; --good:#3fca8a; --warn:#e9a640; --bad:#f07070;
-  --eth:#8f9bff; --bsc:#f0c24a; --btc:#f7a04b; --base:#6f9cff; color-scheme:dark}}
+  --eth:#8f9bff; --bsc:#f0c24a; --btc:#f7a04b; --base:#6f9cff; --viz:#11151d; color-scheme:dark}}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
-.wrap{max-width:1180px;margin:0 auto;padding:24px max(16px,env(safe-area-inset-right)) 60px max(16px,env(safe-area-inset-left));display:grid;gap:18px}
+.wrap{max-width:1240px;margin:0 auto;padding:24px max(16px,env(safe-area-inset-right)) 60px max(16px,env(safe-area-inset-left));display:grid;gap:18px}
 header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px 16px}
 h1{margin:0;font-size:1.5rem;letter-spacing:-.01em}
 h2{margin:0;font-size:1rem}
 .muted{color:var(--muted)} .mono{font-family:var(--mono)}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;display:grid;gap:14px;min-width:0}
-.grid{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:18px;align-items:start}
-@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:minmax(0,370px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:940px){.grid{grid-template-columns:1fr}}
 .lbl{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
 input[type=text],input[type=password],input[type=url],textarea{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:13px var(--mono)}
 textarea{min-height:120px;resize:vertical}
@@ -42,19 +43,19 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--muted);padding:6px 10px}
 .tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:4px 11px 4px 8px;font-size:.86rem;cursor:pointer}
-.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
 .jobs{display:grid;gap:6px}
-.job{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:var(--panel)}
+.job{display:grid;grid-template-columns:1fr auto;gap:3px 10px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:var(--panel)}
 .job.sel{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 .job .n{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .job .t{font:12px var(--mono);color:var(--muted)}
-.st{font:600 .7rem var(--sans);padding:2px 8px;border-radius:99px;border:1px solid currentColor;align-self:start;text-transform:uppercase;letter-spacing:.04em}
-.st.done{color:var(--good)} .st.running,.st.downloading{color:var(--accent)} .st.failed{color:var(--bad)}
+.job .mini{grid-column:1/-1;height:4px;background:var(--track);border-radius:99px;overflow:hidden}
+.job .mini i{display:block;height:100%;background:var(--accent)}
+.st{font:600 .7rem var(--sans);padding:2px 8px;border-radius:99px;border:1px solid currentColor;align-self:start;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.st.done{color:var(--good)} .st.running,.st.downloading,.st.uploading,.st.reading{color:var(--accent)} .st.failed{color:var(--bad)}
 .st.queued,.st.stopped,.st.interrupted,.st.stopping{color:var(--warn)}
-.chain{display:grid;gap:6px;padding:12px;border:1px solid var(--line);border-radius:8px}
-.chain .top{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:.9rem}
 .bar{height:8px;background:var(--track);border-radius:99px;overflow:hidden}
-.bar i{display:block;height:100%;width:0;transition:width .3s}
+.bar i{display:block;height:100%;width:0;transition:width .35s ease}
 .kv{display:flex;flex-wrap:wrap;gap:4px 16px;font:12px var(--mono);color:var(--muted)}
 .kv b{color:var(--ink);font-weight:600}
 .tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
@@ -62,11 +63,36 @@ table{border-collapse:collapse;width:100%;font:13px var(--mono);font-variant-num
 th,td{padding:7px 11px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
 th{font:600 .7rem var(--sans);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--bg)}
 td.num{text-align:right}
-pre.log{margin:0;max-height:240px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all}
+pre.log{margin:0;max-height:220px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all}
 .note{font-size:.83rem;color:var(--muted);margin:0}
 .err{color:var(--bad);font-size:.88rem;margin:0}
 .empty{padding:28px;text-align:center;color:var(--muted)}
 .gate{max-width:420px;margin:12vh auto;display:grid;gap:12px}
+/* 3D */
+.viz{position:relative;height:340px;border-radius:9px;background:var(--viz);border:1px solid var(--line);overflow:hidden}
+.viz > div:first-child{position:absolute;inset:0}
+.viz .tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font:12px var(--mono);white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.viz .legend{position:absolute;left:10px;bottom:8px;display:flex;flex-wrap:wrap;gap:4px 12px;font:11px var(--mono);color:var(--muted);pointer-events:none}
+.viz .legend span{display:inline-flex;align-items:center;gap:5px}
+.viz .hint{position:absolute;right:10px;bottom:8px;font:11px var(--mono);color:var(--muted);pointer-events:none}
+.viz .big{position:absolute;left:12px;top:10px;display:grid;gap:0;pointer-events:none}
+.viz .big b{font:600 1.6rem var(--mono);font-variant-numeric:tabular-nums}
+.viz .big span{font:12px var(--mono);color:var(--muted)}
+/* steps */
+.steps{display:grid;gap:2px}
+.step{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:3px 10px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--line)}
+.step:last-child{border-bottom:0}
+.step .ic{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font:600 12px var(--mono);border:2px solid var(--line);color:var(--muted);grid-row:span 3;align-self:start}
+.step.active .ic{border-color:var(--accent);color:var(--accent)}
+.step.done .ic{border-color:var(--good);background:var(--good);color:var(--panel)}
+.step.failed .ic{border-color:var(--bad);color:var(--bad)}
+.step .nm{font-weight:600;font-size:.93rem;display:flex;align-items:center;gap:7px;min-width:0}
+.step.waiting .nm{color:var(--muted);font-weight:500}
+.step .pc{font:600 .93rem var(--mono);font-variant-numeric:tabular-nums}
+.step .bar{grid-column:2/4;height:6px}
+.step .meta{grid-column:2/4;font:12px var(--mono);color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 14px}
+.step .meta b{color:var(--ink);font-weight:600}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 </style>
 </head>
 <body>
@@ -96,37 +122,54 @@ pre.log{margin:0;max-height:240px;overflow:auto;background:var(--bg);border:1px 
           </div>
           <div data-pane="file">
             <input type="file" id="file" accept=".txt,.csv,.tsv,.json,text/plain,text/csv">
-            <p class="note" style="margin-top:6px">Any text or CSV; 0x and Bitcoin addresses are found anywhere in it. For multi-GB files, a link is faster than uploading from your browser.</p>
+            <p class="note" style="margin-top:6px">Your browser reads the file on your computer and uploads only the addresses, 20 bytes each, in parallel parts. If the upload is interrupted, choose the same file again and it continues from where it stopped.</p>
           </div>
           <div data-pane="paste" hidden><textarea id="paste" placeholder="0x… or bc1… one per line"></textarea></div>
           <div data-pane="url" hidden>
             <input type="url" id="url" placeholder="https://…/wallets.csv (S3/GCS presigned link, Drive direct link, any HTTP URL)">
-            <p class="note" style="margin-top:6px">The server downloads the file itself, so a 10 GB file never goes through your browser.</p>
+            <p class="note" style="margin-top:6px">The server downloads the file itself, so it never goes through your browser.</p>
           </div>
+          <label style="display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start;cursor:pointer"><input type="checkbox" id="firstCol" checked style="margin-top:4px">
+            <span><b>Address is the first value on each line</b><br><span class="note">Only that address is scanned; everything after it on the line is ignored and never uploaded. Untick to pick up addresses anywhere in the text.</span></span></label>
           <div><div class="lbl" style="margin-bottom:6px">Chains</div><div class="row" id="chainBox"></div></div>
-          <label class="row" style="gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="firstCol" checked style="margin-top:4px">
-            <span><b>Address is the first value on each line</b><br><span class="note">Only that address is scanned; everything after it on the line is ignored and never stored. Untick to pick up addresses anywhere in the text.</span></span></label>
           <input type="text" id="jobName" placeholder="Name (optional)">
-          <div class="row"><button class="primary" id="start">Start scan</button><span class="note" id="upMsg"></span></div>
-          <div class="bar" id="upBar" hidden><i style="background:var(--accent)"></i></div>
+          <div class="row"><button class="primary" id="start">Start scan</button><button id="cancelUp" hidden>Cancel upload</button><span class="note" id="upMsg"></span></div>
         </section>
         <section class="panel">
           <div class="row" style="justify-content:space-between"><h2>Scans</h2><span class="note" id="jobCount"></span></div>
           <div class="jobs" id="jobs"><div class="empty">No scans yet. Start one above.</div></div>
         </section>
       </div>
-      <section class="panel" id="detail"><div class="empty">Pick a scan to see live progress and results.</div></section>
+
+      <section class="panel" id="detail">
+        <div id="dHead"><div class="empty" style="padding:6px">Pick a scan, or start one, to see it live.</div></div>
+        <div class="viz">
+          <div id="viz3d"></div>
+          <div class="big" id="vizBig"></div>
+          <div class="tip" id="vizTip" hidden></div>
+          <div class="legend"><span><i class="dot" style="background:var(--track);outline:1px solid var(--line)"></i>waiting</span><span><i class="dot" style="background:var(--accent)"></i>scanning</span><span><i class="dot" style="background:var(--eth)"></i>done (chain colour) · taller = more funded</span></div>
+          <div class="hint">drag to rotate · scroll to zoom</div>
+        </div>
+        <div class="steps" id="dSteps"></div>
+        <div id="dResults"></div>
+        <div id="dActions"></div>
+        <div id="dLog"></div>
+      </section>
     </div>
   </div>
 </div>
+<script src="/static/scan3d.js"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const COLORS = {eth:"var(--eth)", bsc:"var(--bsc)", btc:"var(--btc)", base:"var(--base)"};
+  const VARS = {eth:"--eth", bsc:"--bsc", btc:"--btc", base:"--base"};
+  const cvar = k => (getComputedStyle(document.documentElement).getPropertyValue(VARS[k] || "--accent") || "#4655d4").trim();
   let token = ""; try{ token = localStorage.getItem("cs_token") || ""; }catch{}
-  let info = null, sel = null, tab = "file", pollT = null;
-  const fmt = n => (n ?? 0).toLocaleString("en-IN");
-  const secs = s => s == null ? "--" : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.floor(s/60)}m ${String(Math.round(s%60)).padStart(2,"0")}s` : `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`;
+  let info = null, sel = null, tab = "file", pollT = null, viz = null, local = null;
+
+  const fmt = n => Math.round(n ?? 0).toLocaleString("en-IN");
+  const secs = s => s == null || !isFinite(s) ? "--" : s < 1 ? "<1s" : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.floor(s/60)}m ${String(Math.round(s%60)).padStart(2,"0")}s` : `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`;
+  const mb = b => b >= 1e9 ? (b/1e9).toFixed(2) + " GB" : (b/1e6).toFixed(1) + " MB";
   const when = t => t ? new Date(t*1000).toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -134,125 +177,289 @@ pre.log{margin:0;max-height:240px;overflow:auto;background:var(--bg);border:1px 
     const r = await fetch(path, {...opts, headers:{...(opts.headers||{}), "X-Access-Token": token}});
     if(r.status === 401){ showGate("That token was not accepted."); throw new Error("unauthorized"); }
     const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ j = {error:t}; }
-    if(!r.ok) throw new Error(j.error || t || ("HTTP " + r.status));
+    if(!r.ok){ const e = new Error(j && j.error || t || ("HTTP " + r.status)); e.status = r.status; e.body = j; throw e; }
     return j;
   }
+  const post = (p, body) => api(p, {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body)});
+
   function showGate(msg){ $("main").hidden = true; $("gate").hidden = false; $("gateErr").textContent = msg || ""; clearInterval(pollT); }
   async function boot(){
     if(!token) return showGate();
     try{ info = await api("/api/info"); }catch(e){ if(e.message !== "unauthorized") showGate(e.message); return; }
     $("gate").hidden = true; $("main").hidden = false;
     const evm = info.chains.map(c => `${c.name}: ${c.assets.join(", ")}`).join(" · ");
-    $("infoLine").textContent = `${evm}${info.btc.enabled ? " · Bitcoin ("+info.btc.mode+")" : ""} · ${info.cpus} CPU · ${info.disk_free_gb} GB free`;
-    const keys = [...info.chains.map(c => [c.key, c.name]), ...(info.btc.enabled ? [["btc","Bitcoin"]] : [])];
-    $("chainBox").innerHTML = keys.map(([k,n]) => `<label class="chip"><input type="checkbox" value="${k}" checked><span class="dot" style="background:${COLORS[k]||"var(--accent)"}"></span>${esc(n)}</label>`).join("");
-    refresh(); clearInterval(pollT); pollT = setInterval(refresh, 2500);
+    $("infoLine").textContent = `${evm}${info.btc.enabled ? " · Bitcoin" : ""} · ${info.disk_free_gb} GB free on server`;
+    const keys = chainKeys();
+    $("chainBox").innerHTML = keys.map(([k,n]) => `<label class="chip"><input type="checkbox" value="${k}" checked><span class="dot" style="background:var(${VARS[k]||"--accent"})"></span>${esc(n)}</label>`).join("");
+    if(!viz && window.Scan3D) viz = new window.Scan3D($("viz3d"), $("vizTip"));
+    vizIdle();
+    refresh(); clearInterval(pollT); pollT = setInterval(refresh, 2000);
+  }
+  const chainKeys = () => [...info.chains.map(c => [c.key, c.name]), ...(info.btc.enabled ? [["btc","Bitcoin"]] : [])];
+  function vizIdle(chains){
+    if(!viz || !info) return;
+    const pick = chains || chainKeys().map(([k]) => k);
+    viz.update(chainKeys().filter(([k]) => pick.includes(k)).map(([k,n]) => ({key:k, name:n, color:cvar(k), grid:null})), {streamRate: 0});
   }
   $("tokBtn").onclick = () => { token = $("tok").value.trim(); try{ localStorage.setItem("cs_token", token); }catch{} boot(); };
   $("tok").onkeydown = e => { if(e.key === "Enter") $("tokBtn").click(); };
   $("logout").onclick = () => { token = ""; try{ localStorage.removeItem("cs_token"); }catch{} showGate(); };
-
   document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
     tab = b.dataset.tab;
     document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
     document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== tab);
   });
 
-  function uploadFile(f){
-    return new Promise((res, rej) => {
-      const fd = new FormData(); fd.append("file", f);
-      const x = new XMLHttpRequest(); x.open("POST", "/api/upload"); x.setRequestHeader("X-Access-Token", token);
-      $("upBar").hidden = false;
-      x.upload.onprogress = e => { if(e.lengthComputable){ const p = e.loaded/e.total*100; $("upBar").firstElementChild.style.width = p.toFixed(1)+"%"; $("upMsg").textContent = `Uploading ${(e.loaded/1e6).toFixed(0)} / ${(e.total/1e6).toFixed(0)} MB`; } };
-      x.onload = () => { $("upBar").hidden = true; x.status < 300 ? res(JSON.parse(x.responseText)) : rej(new Error(x.responseText || "upload failed")); };
-      x.onerror = () => { $("upBar").hidden = true; rej(new Error("Upload interrupted. Check your connection, or use a file link.")); };
-      x.send(fd);
+  // ---------- rate meter (smoothed over the last few seconds) ----------
+  function meter(){ const pts = []; return { push(v){ const t = performance.now()/1000; pts.push([t, v]); while(pts.length > 2 && t - pts[0][0] > 6) pts.shift(); },
+    rate(){ if(pts.length < 2) return 0; const [t0,v0] = pts[0], [t1,v1] = pts[pts.length-1]; return t1 > t0 ? (v1 - v0) / (t1 - t0) : 0; } }; }
+
+  // ---------- fast upload: read in the browser, send packed addresses ----------
+  async function fastUpload(file, chains, firstCol, name){
+    const key = `${file.name}|${file.size}|${file.lastModified}|${firstCol ? 1 : 0}`;
+    let up = await api("/api/packed/find?key=" + encodeURIComponent(key)).catch(() => null);
+    const resumed = !!up;
+    if(!up) up = await post("/api/packed", {name: file.name, file_bytes: file.size, first_column: firstCol, key});
+    const L = local = { id: up.upload_id, name: name || file.name, file, chains, phase: "reading", resumed, error: null,
+      read: {done: 0, total: file.size, m: meter()}, up: {done: 0, total: 0, inflight: {}, m: meter(), parts: 0, partsDone: 0},
+      found: {evm: 0, btc: 0, lines: 0, invalid: 0, noaddr: 0}, readerDone: false, counts: null, stats: null, cancelled: false };
+    sel = "local"; renderJobs(); showLocal();
+    const worker = new Worker("/static/reader.js");
+    L.worker = worker;
+    const queue = []; let active = 0; const MAXC = 4;
+    const sendPart = (p) => new Promise((res, rej) => {
+      const x = new XMLHttpRequest(); L.xhrs = L.xhrs || new Set(); L.xhrs.add(x);
+      x.open("PUT", `/api/packed/${L.id}/${p.kind}/${p.seq}`); x.setRequestHeader("X-Access-Token", token);
+      x.upload.onprogress = e => { L.up.inflight[p.kind + p.seq] = e.loaded; };
+      x.onload = () => { L.xhrs.delete(x); x.status < 300 ? res() : rej(new Error(x.responseText || ("HTTP " + x.status))); };
+      x.onerror = () => { L.xhrs.delete(x); rej(new Error("network error")); };
+      x.onabort = () => { L.xhrs.delete(x); rej(new Error("cancelled")); };
+      x.send(p.buf);
     });
+    const pump = () => {
+      while(active < MAXC && queue.length && !L.cancelled){
+        const p = queue.shift(); active++;
+        (async () => {
+          for(let attempt = 0; ; attempt++){
+            try{ await sendPart(p); break; }
+            catch(e){
+              if(L.cancelled) return;
+              if(attempt >= 9){ L.error = "Upload keeps failing: " + e.message + ". Choose the same file again to continue."; return; }
+              await new Promise(r => setTimeout(r, Math.min(15000, 800 * 2 ** attempt)));
+            }
+          }
+          delete L.up.inflight[p.kind + p.seq];
+          L.up.done += p.bytes; L.up.partsDone++; active--;
+          worker.postMessage({cmd: "ack"}); pump(); maybeFinish();
+        })();
+      }
+    };
+    const maybeFinish = async () => {
+      if(!L.readerDone || active || queue.length || L.finishing || L.cancelled || L.error) return;
+      L.finishing = true; L.phase = "finishing";
+      try{
+        await post(`/api/packed/${L.id}/finish`, {counts: L.counts, stats: L.stats});
+        const job = await post("/api/jobs", {upload_id: L.id, chains: L.chains, first_column: firstCol, name: L.name});
+        worker.terminate(); local = null; sel = job.id; $("cancelUp").hidden = true; $("upMsg").textContent = "Upload complete, scan queued.";
+        window.onbeforeunload = null; refresh();
+      }catch(e){ L.error = "Could not finish the upload: " + e.message; L.finishing = false; }
+    };
+    worker.onmessage = (ev) => {
+      const m = ev.data;
+      if(m.type === "progress"){
+        L.read.done = m.bytesRead; L.read.m.push(m.bytesRead);
+        Object.assign(L.found, {evm: m.evm, btc: m.btc, lines: m.lines, invalid: m.invalid_hex, noaddr: m.lines_without_address});
+        L.sentProjected = m.bytesRead ? m.sentBytes / m.bytesRead * file.size : 0;
+      } else if(m.type === "part"){
+        L.up.parts++;
+        if(m.skip){ L.up.partsDone++; L.up.skipped = (L.up.skipped || 0) + m.bytes; }
+        else { L.up.total += m.bytes; queue.push(m); pump(); }
+      } else if(m.type === "done"){
+        L.readerDone = true; L.counts = m.counts; L.stats = m.stats; L.phase = "uploading"; maybeFinish();
+      } else if(m.type === "error"){ L.error = "Could not read the file: " + m.message; }
+    };
+    worker.postMessage({cmd: "start", file, firstCol, have: up.parts || {}});
+    window.onbeforeunload = () => "An upload is in progress. Leaving now pauses it; choose the same file again to continue.";
+    $("cancelUp").hidden = false;
+    $("cancelUp").onclick = () => { L.cancelled = true; worker.terminate(); (L.xhrs || []).forEach(x => x.abort()); local = null; sel = null; window.onbeforeunload = null;
+      $("cancelUp").hidden = true; $("upMsg").textContent = "Upload paused. Choose the same file again to continue."; refresh(); };
   }
+
   $("start").onclick = async () => {
     const chains = [...document.querySelectorAll("#chainBox input:checked")].map(i => i.value);
     if(!chains.length){ $("upMsg").textContent = "Pick at least one chain."; return; }
+    if(local){ $("upMsg").textContent = "An upload is already running."; return; }
+    const firstCol = $("firstCol").checked, name = $("jobName").value.trim();
     $("start").disabled = true; $("upMsg").textContent = "";
     try{
-      const body = {chains, name: $("jobName").value.trim(), first_column: $("firstCol").checked};
       if(tab === "file"){
         const f = $("file").files[0]; if(!f) throw new Error("Choose a file first.");
-        const u = await uploadFile(f); body.upload_id = u.upload_id; body.upload_name = f.name;
+        await fastUpload(f, chains, firstCol, name);
       } else if(tab === "paste"){
         const t = $("paste").value; if(!t.trim()) throw new Error("Paste some addresses first.");
-        const u = await api("/api/upload", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({text:t})});
-        body.upload_id = u.upload_id; body.upload_name = "Pasted list";
+        const u = await post("/api/upload", {text: t});
+        const job = await post("/api/jobs", {upload_id: u.upload_id, upload_name: "Pasted list", chains, first_column: firstCol, name});
+        sel = job.id; $("paste").value = ""; refresh();
       } else {
-        const u = $("url").value.trim(); if(!u) throw new Error("Enter a file link first."); body.url = u;
+        const u = $("url").value.trim(); if(!u) throw new Error("Enter a file link first.");
+        const job = await post("/api/jobs", {url: u, chains, first_column: firstCol, name}); sel = job.id; refresh();
       }
-      const job = await api("/api/jobs", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body)});
-      sel = job.id; $("upMsg").textContent = "Scan queued."; $("file").value = ""; $("paste").value = ""; $("jobName").value = "";
-      refresh();
+      $("jobName").value = "";
     }catch(e){ $("upMsg").textContent = e.message; }
     finally{ $("start").disabled = false; }
   };
 
-  async function refresh(){
-    let list; try{ list = await api("/api/jobs"); }catch{ return; }
+  // ---------- step model ----------
+  // a step: {name, state: waiting|active|done|failed, pct, meta:[[label, value]], dot}
+  function stepHTML(s, i){
+    const pct = s.pct == null ? (s.state === "done" ? 100 : 0) : s.pct;
+    const icon = s.state === "done" ? "✓" : s.state === "failed" ? "!" : i + 1;
+    return `<div class="step ${s.state}"><span class="ic">${icon}</span>
+      <span class="nm">${s.dot ? `<i class="dot" style="background:var(${VARS[s.dot]||"--accent"})"></i>` : ""}${esc(s.name)}</span>
+      <span class="pc">${s.state === "waiting" ? "" : pct.toFixed(pct >= 99.95 || pct === 0 ? 0 : 1) + "%"}</span>
+      <div class="bar"><i style="width:${Math.min(100, pct)}%;background:${s.state === "failed" ? "var(--bad)" : s.state === "done" ? "var(--good)" : s.dot ? `var(${VARS[s.dot]})` : "var(--accent)"}"></i></div>
+      <div class="meta">${(s.meta || []).filter(Boolean).map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join("")}</div></div>`;
+  }
+  const scanSteps = (chains, prog, jobState) => chains.map(([k, n]) => {
+    const c = prog && prog.chains && prog.chains.find(x => x.chain === k);
+    if(!c) return {name: `Scan ${n}`, state: "waiting", dot: k, meta: [["", "waiting for the step above"]]};
+    const done = c.status === "done";
+    const st = done ? "done" : (jobState === "failed" || jobState === "stopped" || jobState === "interrupted") ? "failed" : "active";
+    return {name: `Scan ${n}`, state: st, pct: c.pct, dot: k, meta: [
+      ["", `${fmt(c.done)} / ${fmt(c.total)} addresses`], ["speed", done ? `${fmt(c.total / Math.max(c.seconds, .1))}/s avg` : `${fmt(c.rate_per_s)}/s`],
+      ["ETA", done ? "done" : secs(c.eta_s)], ["funded", fmt(c.funded_entries)], c.failed ? ["failed", fmt(c.failed)] : null,
+      ["time", secs(c.seconds)], c.status && !done && c.status !== "scanning" ? ["", c.status] : null]};
+  });
+
+  function showLocal(){
+    const L = local; if(!L) return;
+    const rr = L.read.m.rate(); L.up.m.push(L.up.done + Object.values(L.up.inflight).reduce((a, b) => a + b, 0));
+    const ur = L.up.m.rate();
+    const upNow = L.up.done + Object.values(L.up.inflight).reduce((a, b) => a + b, 0);
+    const upTotal = Math.max(upNow, L.readerDone ? L.up.total : Math.max(L.up.total, L.sentProjected || 0));
+    const readPct = L.read.total ? L.read.done / L.read.total * 100 : 100;
+    const upPct = L.readerDone && L.up.partsDone === L.up.parts ? 100 : upTotal ? Math.min(99.9, upNow / upTotal * 100) : 0;
+    const steps = [
+      {name: "Read file on your computer", state: L.error && !L.readerDone ? "failed" : L.readerDone ? "done" : "active", pct: readPct, meta: [
+        ["", `${mb(L.read.done)} / ${mb(L.read.total)}`], ["speed", L.readerDone ? "done" : mb(rr) + "/s"],
+        ["ETA", L.readerDone ? "done" : secs(rr ? (L.read.total - L.read.done) / rr : null)],
+        ["0x", fmt(L.found.evm)], ["BTC", fmt(L.found.btc)], L.found.noaddr ? ["lines without address", fmt(L.found.noaddr)] : null]},
+      {name: "Upload addresses to server", state: L.error ? "failed" : L.phase === "finishing" ? "done" : (L.up.parts ? "active" : "waiting"), pct: upPct, meta: [
+        ["", `${mb(upNow)}${L.readerDone ? "" : " (~" + mb(upTotal) + " total)"}`], ["speed", mb(ur) + "/s"],
+        ["ETA", secs(ur ? (upTotal - upNow) / ur : null)], ["parts", `${L.up.partsDone} / ${L.up.parts}${L.readerDone ? "" : "+"}`],
+        L.up.skipped ? ["already on server", mb(L.up.skipped)] : null,
+        ["saved vs. raw file", L.read.done ? `${Math.max(0, 100 - (L.sentProjected || 0) / L.read.total * 100).toFixed(0)}%` : "--"]]},
+      {name: "Prepare on server (sort + remove duplicates)", state: "waiting", meta: [["", "starts when the upload finishes"]]},
+      ...scanSteps(chainKeys().filter(([k]) => L.chains.includes(k)), null, null),
+      {name: "Save results", state: "waiting"}];
+    $("dHead").innerHTML = `<div class="row" style="justify-content:space-between"><div><h2>${esc(L.name)}</h2><div class="note">${L.resumed ? "Resuming an earlier upload of this file" : "Uploading"} · keep this tab open</div></div><span class="st ${L.readerDone ? "uploading" : "reading"}">${L.readerDone ? "uploading" : "reading"}</span></div>`;
+    $("dSteps").innerHTML = steps.map(stepHTML).join("");
+    $("dResults").innerHTML = L.error ? `<p class="err">${esc(L.error)}</p>` : "";
+    $("dActions").innerHTML = ""; $("dLog").innerHTML = "";
+    $("vizBig").innerHTML = `<b>${fmt(L.found.evm + L.found.btc)}</b><span>addresses found so far · ${mb(ur)}/s up</span>`;
+    if(viz) viz.update(chainKeys().filter(([k]) => L.chains.includes(k)).map(([k,n]) => ({key:k, name:n, color:cvar(k), grid:null})), {streamRate: ur / 1e6 + 0.5});
+  }
+  setInterval(() => { if(local && sel === "local") showLocal(); }, 250);
+
+  // ---------- jobs ----------
+  let lastList = [];
+  function renderJobs(){
+    const list = lastList;
+    const items = [];
+    if(local) items.push(`<div class="job ${sel==="local"?"sel":""}" data-id="local"><span class="n">${esc(local.name)}</span><span class="st ${local.readerDone ? "uploading" : "reading"}">${local.readerDone ? "uploading" : "reading"}</span>
+      <span class="t">this browser · keep tab open</span><span class="mini"><i style="width:${local.read.total ? local.read.done/local.read.total*100 : 0}%"></i></span></div>`);
+    for(const j of list) items.push(`<div class="job ${j.id===sel?"sel":""}" data-id="${j.id}"><span class="n">${esc(j.name || j.id)}</span><span class="st ${j.status}">${j.status}</span>
+        <span class="t">${when(j.created)} · ${esc((j.chains||[]).join(", "))}</span>${j._pct != null && j.status === "running" ? `<span class="mini"><i style="width:${j._pct}%"></i></span>` : ""}</div>`);
     $("jobCount").textContent = list.length ? `${list.length} total` : "";
-    $("jobs").innerHTML = list.length ? list.map(j => `<div class="job ${j.id===sel?"sel":""}" data-id="${j.id}">
-        <span class="n">${esc(j.name || j.id)}</span><span class="st ${j.status}">${j.status}</span>
-        <span class="t">${when(j.created)} · ${esc((j.chains||[]).join(", "))}</span></div>`).join("")
-      : '<div class="empty">No scans yet. Start one above.</div>';
-    document.querySelectorAll(".job").forEach(el => el.onclick = () => { sel = el.dataset.id; refresh(); });
-    if(!sel && list.length) sel = list[0].id;
-    if(sel) renderDetail(sel);
+    $("jobs").innerHTML = items.length ? items.join("") : '<div class="empty">No scans yet. Start one above.</div>';
+    document.querySelectorAll(".job").forEach(el => el.onclick = () => { sel = el.dataset.id; renderJobs(); sel === "local" ? showLocal() : renderDetail(sel); });
+  }
+  const pctCache = {};
+  async function refresh(){
+    try{ lastList = await api("/api/jobs"); }catch{ return; }
+    lastList.forEach(j => j._pct = pctCache[j.id]);
+    if(!sel && !local && lastList.length) sel = lastList[0].id;
+    renderJobs();
+    if(sel && sel !== "local") renderDetail(sel);
+    if(!sel && !local){ $("dHead").innerHTML = '<div class="empty" style="padding:6px">Pick a scan, or start one, to see it live.</div>'; $("dSteps").innerHTML = ""; $("vizBig").innerHTML = ""; vizIdle(); }
   }
 
-  async function act(path, method="POST"){ try{ await api(path, {method}); refresh(); }catch(e){ $("actMsg") && ($("actMsg").textContent = e.message); } }
+  async function act(path, method="POST"){ try{ await api(path, {method}); refresh(); }catch(e){ const m = $("actMsg"); if(m) m.textContent = e.message; } }
 
   async function renderDetail(id){
     let d; try{ d = await api("/api/jobs/" + id); }catch{ return; }
     if(id !== sel) return;
-    const j = d.job, p = d.progress, s = d.summary, ing = d.ingest;
-    let html = `<div class="row" style="justify-content:space-between"><div><h2>${esc(j.name || j.id)}</h2><div class="note mono">${j.id}</div></div><span class="st ${j.status}">${j.status}</span></div>`;
-    if(j.status === "downloading"){
-      const pct = j.download_total ? j.downloaded / j.download_total * 100 : 0;
-      html += `<div class="chain"><div class="top"><b>Downloading input</b><span class="mono">${(j.downloaded/1e9).toFixed(2)} GB${j.download_total ? " / "+(j.download_total/1e9).toFixed(2)+" GB" : ""}</span></div><div class="bar"><i style="width:${pct}%;background:var(--accent)"></i></div></div>`;
+    const j = d.job, p = d.progress, s = d.summary, ing = d.ingest, ip = d.ingest_progress;
+    const keys = chainKeys().filter(([k]) => !j.chains.length || j.chains.includes(k));
+    const failedish = ["failed", "stopped", "interrupted"].includes(j.status);
+    const steps = [];
+    if(j.packed){
+      const ps = j.packed.stats || {};
+      steps.push({name: "Read file on your computer", state: "done", pct: 100, meta: [["", mb(ps.file_bytes || 0)], ["0x", fmt(ps.evm)], ["BTC", fmt(ps.btc)], ps.lines_without_address ? ["lines without address", fmt(ps.lines_without_address)] : null]});
+      steps.push({name: "Upload addresses to server", state: "done", pct: 100, meta: [["", ing && ing.uploaded_bytes ? mb(ing.uploaded_bytes) : "complete"]]});
+    } else if(j.url){
+      const dl = j.status === "downloading";
+      steps.push({name: "Download file to server", state: dl ? "active" : (j.input ? "done" : failedish ? "failed" : "waiting"),
+        pct: j.download_total ? j.downloaded / j.download_total * 100 : (j.input ? 100 : 0),
+        meta: [["", `${mb(j.downloaded || 0)}${j.download_total ? " / " + mb(j.download_total) : ""}`]]});
+    } else {
+      steps.push({name: "Upload file", state: "done", pct: 100});
     }
-    if(ing){
-      html += `<div class="kv"><span>Read <b>${(ing.bytes/1e9).toFixed(2)} GB</b></span><span>0x unique <b>${fmt(ing.evm_unique)}</b></span><span>BTC unique <b>${fmt(ing.btc_unique)}</b></span><span>Duplicates <b>${fmt((ing.evm_duplicates||0)+(ing.btc_duplicates||0))}</b></span><span>Malformed <b>${fmt(ing.invalid_hex)}</b></span>${ing.first_column ? `<span>Lines without an address <b>${fmt(ing.lines_without_address)}</b></span><span>Mode <b>first value per line</b></span>` : ""}<span>Ingest <b>${secs(ing.seconds)}</b></span></div>`;
-    } else if(j.status === "running"){
-      html += `<p class="note">Reading and deduplicating the input…</p>`;
+    // prepare on server
+    let prep;
+    if(ing) prep = {state: "done", pct: 100, meta: [["0x unique", fmt(ing.evm_unique)], ["BTC unique", fmt(ing.btc_unique)], ["duplicates", fmt((ing.evm_duplicates||0) + (ing.btc_duplicates||0))], ["malformed", fmt(ing.invalid_hex)], ing.lines_without_address != null && !j.packed ? ["lines without address", fmt(ing.lines_without_address)] : null, ["time", secs(ing.seconds)]]};
+    else if(ip && ip.stage !== "done"){
+      const reading = ip.stage === "reading";
+      const pct = reading ? ip.pct * 0.8 : 80 + ip.pct * 0.2;
+      prep = {state: failedish ? "failed" : "active", pct, meta: [["", reading ? `sorting ${mb(ip.done)} / ${mb(ip.total)}` : `removing duplicates: bucket ${ip.done} / ${ip.total}`],
+        ["speed", reading ? mb(ip.rate_per_s) + "/s" : `${fmt(ip.rate_per_s)} buckets/s`], ["ETA", secs(ip.eta_s)]]};
+    } else prep = {state: j.status === "running" ? "active" : failedish ? "failed" : "waiting", pct: 0, meta: [["", j.status === "queued" ? "queued behind another scan" : j.status === "running" ? "starting…" : ""]]};
+    steps.push({name: "Prepare on server (sort + remove duplicates)", ...prep});
+    steps.push(...scanSteps(keys, p, j.status));
+    const allScanned = p && p.chains && p.chains.length && p.chains.every(c => c.status === "done");
+    steps.push({name: "Save results", state: s ? "done" : (allScanned && j.status === "running") ? "active" : failedish ? "failed" : "waiting", pct: s ? 100 : allScanned ? 50 : 0,
+      meta: s ? [["", "funded.csv, funded_wide.csv, summary.json ready"]] : []});
+
+    // overall %
+    const tot = p && p.chains ? p.chains.reduce((a, c) => a + c.total, 0) : 0, dn = p && p.chains ? p.chains.reduce((a, c) => a + c.done, 0) : 0;
+    const overall = j.status === "done" ? 100 : tot ? dn / tot * 100 : 0;
+    pctCache[j.id] = overall;
+    const rate = p && p.chains ? p.chains.reduce((a, c) => a + (c.status === "done" ? 0 : c.rate_per_s || 0), 0) : 0;
+    const eta = p && p.chains ? Math.max(0, ...p.chains.map(c => c.eta_s || 0)) : null;
+    const funded = p && p.chains ? p.chains.reduce((a, c) => a + c.funded_entries, 0) : 0;
+    $("dHead").innerHTML = `<div class="row" style="justify-content:space-between"><div><h2>${esc(j.name || j.id)}</h2><div class="note mono">${j.id}${j.first_column ? " · first value per line" : ""}</div></div><span class="st ${j.status}">${j.status}</span></div>
+      <div class="kv"><span>overall <b>${overall.toFixed(1)}%</b></span>${j.status === "running" && rate ? `<span>speed <b>${fmt(rate)}/s</b></span><span>ETA <b>${secs(eta)}</b></span>` : ""}<span>funded so far <b>${fmt(funded)}</b></span>${p ? `<span>elapsed <b>${secs(p.elapsed_s)}</b></span>` : ""}</div>`;
+    $("dSteps").innerHTML = steps.map(stepHTML).join("");
+    $("vizBig").innerHTML = `<b>${overall.toFixed(1)}%</b><span>${j.status === "running" && rate ? fmt(rate) + " addresses/s · " : ""}${fmt(funded)} funded</span>`;
+    if(viz){
+      const vc = keys.map(([k, n]) => { const c = p && p.chains && p.chains.find(x => x.chain === k);
+        return {key: k, name: n, color: cvar(k), grid: c && c.grid ? c.grid : null, grid_funded: c && c.grid_funded}; });
+      viz.update(vc, {streamRate: 0});
     }
-    if(p && p.chains){
-      for(const c of p.chains){
-        const col = COLORS[c.chain] || "var(--accent)";
-        const eps = (c.endpoints||[]).map(e => `${e.endpoint.split(".")[0]} ${e.inflight}/${Math.floor(e.limit)}${e.parked?" parked":""}${e.rate_limited?" · "+fmt(e.rate_limited)+" throttled":""}`).join(" · ");
-        html += `<div class="chain"><div class="top"><b><span class="dot" style="background:${col}"></span> ${esc(c.name)}</b><span class="mono">${fmt(c.done)} / ${fmt(c.total)} · ${c.pct}%</span></div>
-          <div class="bar"><i style="width:${c.pct}%;background:${col}"></i></div>
-          <div class="kv"><span>Speed <b>${fmt(c.rate_per_s)}/s</b></span><span>ETA <b>${c.status==="done"?"done":secs(c.eta_s)}</b></span><span>Funded <b>${fmt(c.funded_entries)}</b></span><span>Failed <b>${fmt(c.failed)}</b></span>${c.block?`<span>Block <b>${c.block}</b></span>`:""}${c.addresses_per_call?`<span>Batch <b>${fmt(c.addresses_per_call)}</b></span>`:""}</div>
-          ${eps?`<div class="note mono">${esc(eps)}</div>`:""}</div>`;
-      }
-    }
+    let res = "";
     if(s && s.assets){
-      html += `<div class="tablebox"><table><thead><tr><th>Chain</th><th>Asset</th><th class="num">Funded addresses</th><th class="num">Total</th></tr></thead><tbody>${
+      res += `<div class="tablebox"><table><thead><tr><th>Chain</th><th>Asset</th><th class="num">Funded addresses</th><th class="num">Total</th></tr></thead><tbody>${
         s.assets.length ? s.assets.map(a => `<tr><td>${esc(a.chain)}</td><td>${esc(a.asset)}</td><td class="num">${fmt(a.funded_addresses)}</td><td class="num">${esc(a.total)}</td></tr>`).join("") : '<tr><td colspan="4" class="muted">No funded addresses found.</td></tr>'
       }</tbody></table></div>`;
     }
-    if(d.files.length){
-      html += `<div class="row">${d.files.map(f => `<a class="btn" href="/api/jobs/${j.id}/files/${f}?token=${encodeURIComponent(token)}">${esc(f)}</a>`).join("")}<a class="btn" href="/api/jobs/${j.id}/files/log.txt?token=${encodeURIComponent(token)}">log.txt</a></div>`;
-    }
-    if(j.error) html += `<p class="err">${esc(j.error)}</p>`;
+    if(d.files.length) res += `<div class="row" style="margin-top:12px">${d.files.filter(f => f !== "progress.json").map(f => `<a class="btn" href="/api/jobs/${j.id}/files/${f}?token=${encodeURIComponent(token)}">${esc(f)}</a>`).join("")}<a class="btn" href="/api/jobs/${j.id}/files/log.txt?token=${encodeURIComponent(token)}">log.txt</a></div>`;
+    if(j.error) res += `<p class="err">${esc(j.error)}</p>`;
+    $("dResults").innerHTML = res;
     const btns = [];
     if(["running","queued","downloading"].includes(j.status)) btns.push(`<button data-a="stop">Stop</button>`);
     if(["stopped","failed","interrupted"].includes(j.status)) btns.push(`<button class="primary" data-a="resume">Resume</button>`);
     if(!["running","downloading","stopping"].includes(j.status)) btns.push(`<button data-a="delete">Delete</button>`);
-    html += `<div class="row">${btns.join("")}<span class="note" id="actMsg"></span></div>`;
-    if(d.log.length) html += `<div><div class="lbl" style="margin-bottom:6px">Log</div><pre class="log">${esc(d.log.join("\n"))}</pre></div>`;
-    $("detail").innerHTML = html;
-    $("detail").querySelectorAll("[data-a]").forEach(b => b.onclick = () => {
+    const keepConfirm = $("dActions").querySelector('[data-confirm]');
+    $("dActions").innerHTML = `<div class="row">${btns.join("")}<span class="note" id="actMsg"></span></div>`;
+    if(keepConfirm){ const b = $("dActions").querySelector('[data-a="delete"]'); if(b){ b.dataset.confirm = 1; b.textContent = "Click again to delete"; } }
+    $("dActions").querySelectorAll("[data-a]").forEach(b => b.onclick = () => {
       const a = b.dataset.a;
-      if(a === "delete"){
-        if(b.dataset.confirm){ act(`/api/jobs/${j.id}`, "DELETE"); sel = null; }
-        else { b.dataset.confirm = 1; b.textContent = "Click again to delete"; }
-      } else act(`/api/jobs/${j.id}/${a}`);
+      if(a === "delete"){ if(b.dataset.confirm){ act(`/api/jobs/${j.id}`, "DELETE"); sel = null; } else { b.dataset.confirm = 1; b.textContent = "Click again to delete"; } }
+      else act(`/api/jobs/${j.id}/${a}`);
     });
+    const logEl = $("dLog").querySelector("pre"); const atBottom = !logEl || logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 8;
+    $("dLog").innerHTML = d.log.length ? `<div class="lbl" style="margin-bottom:6px">Log</div><pre class="log">${esc(d.log.join("\n"))}</pre>` : "";
+    const nl = $("dLog").querySelector("pre"); if(nl && atBottom) nl.scrollTop = nl.scrollHeight;
   }
   boot();
 })();

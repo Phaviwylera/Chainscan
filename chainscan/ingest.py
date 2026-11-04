@@ -13,7 +13,7 @@ import os
 import re
 import time
 import zlib
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 
@@ -166,11 +166,33 @@ def _dedupe_btc(args):
     return n, len(seen)
 
 
+def _pack_part(args):
+    """A part uploaded by the browser reader: raw 20-byte 0x addresses, or BTC addresses one per line."""
+    path, kind, outdir, wid, nbtc = args
+    data = open(path, "rb").read()
+    if kind == "evm":
+        n = len(data) // 20
+        if n:
+            _flush(outdir, wid, [np.frombuffer(data[:n * 20], dtype=np.uint8).reshape(-1, 20)], [], nbtc)
+        return {"bytes": len(data), "evm_raw": n, "btc_raw": 0}
+    lines = [ln.strip() for ln in data.split(b"\n") if ln.strip()]
+    lines = [a.lower() if a[:3] == b"bc1" else a for a in lines]
+    if lines:
+        _flush(outdir, wid, [], lines, nbtc)
+    return {"bytes": len(data), "evm_raw": 0, "btc_raw": len(lines)}
+
+
+def is_packed(path):
+    return os.path.isdir(path) and os.path.exists(os.path.join(path, "manifest.json"))
+
+
 class IngestAgent:
     def __init__(self, cfg, run_dir):
         self.cfg = cfg
         self.dir = os.path.join(run_dir, "ingest")
         self.meta_path = os.path.join(self.dir, "ingest.json")
+        self.progress_path = os.path.join(self.dir, "progress.json")
+        self._t0 = time.time()
 
     def evm_buckets(self):
         return sorted(glob.glob(os.path.join(self.dir, "evm", "u_b*.bin")))
@@ -178,10 +200,25 @@ class IngestAgent:
     def btc_buckets(self):
         return sorted(glob.glob(os.path.join(self.dir, "btc", "u_b*.txt")))
 
+    def _progress(self, stage, done, total, unit, **extra):
+        el = time.time() - self._stage_t0
+        rate = done / el if el > 0.3 else 0
+        write_json_atomic(self.progress_path, {
+            "stage": stage, "done": done, "total": total, "unit": unit,
+            "pct": round(100 * done / total, 2) if total else 100.0,
+            "rate_per_s": round(rate, 1), "eta_s": round((total - done) / rate) if rate > 0 else None,
+            "elapsed_s": round(el, 1), "updated": time.time(), **extra})
+
     def run(self, inputs, want_btc, first_col=False):
-        sig = [(os.path.abspath(p), os.path.getsize(p), int(os.path.getmtime(p))) for p in inputs]
+        import json
+        sig = []
+        for p in inputs:
+            if is_packed(p):
+                man = json.load(open(os.path.join(p, "manifest.json")))
+                sig.append((os.path.abspath(p), man.get("finished_at", 0), "packed"))
+            else:
+                sig.append((os.path.abspath(p), os.path.getsize(p), int(os.path.getmtime(p))))
         if os.path.exists(self.meta_path):
-            import json
             meta = json.load(open(self.meta_path))
             if (meta.get("inputs") == [list(s) for s in sig] and meta.get("btc") == want_btc
                     and meta.get("first_column", False) == first_col):
@@ -196,44 +233,89 @@ class IngestAgent:
 
         workers = self.cfg.ingest_workers or os.cpu_count() or 2
         chunk = self.cfg.ingest_chunk_mb * 1024 * 1024
-        total = sum(s[1] for s in sig)
-        log(f"ingest: reading {len(inputs)} file(s), {total / 1e9:.2f} GB, {workers} workers, "
-            f"{'first value on each line only' if first_col else 'addresses anywhere in the text'}")
         t0 = time.time()
-        jobs, wid = [], 0
-        for p, size, _ in sig:
-            parts = max(1, min(workers * 2, size // (16 * 1024 * 1024) or 1))
-            step = -(-size // parts)
-            for i in range(parts):
-                s, e = i * step, min(size, (i + 1) * step)
-                if s < e:
-                    jobs.append((p, s, e, self.dir, wid, chunk, want_btc, self.cfg.btc_buckets, first_col))
-                    wid += 1
+        jobs, sizes, wid = [], [], 0
         stats = {"bytes": 0, "lines": 0, "evm_raw": 0, "invalid_hex": 0, "btc_raw": 0}
+        packed_stats = {}
+        for p, a, b in sig:
+            if b == "packed":
+                man = json.load(open(os.path.join(p, "manifest.json")))
+                for k in ("lines", "invalid_hex", "lines_without_address", "file_bytes"):
+                    packed_stats[k] = packed_stats.get(k, 0) + int((man.get("stats") or {}).get(k, 0))
+                for part in sorted(glob.glob(os.path.join(p, "*.part"))):
+                    kind = os.path.basename(part).split("_")[0]
+                    if kind == "btc" and not want_btc:
+                        continue
+                    jobs.append((_pack_part, (part, kind, self.dir, wid, self.cfg.btc_buckets)))
+                    sizes.append(os.path.getsize(part))
+                    wid += 1
+            else:
+                size = a
+                parts = max(1, min(4096, max(workers * 2, size // (32 * 1024 * 1024))))
+                step = -(-size // parts)
+                for i in range(parts):
+                    s0, e0 = i * step, min(size, (i + 1) * step)
+                    if s0 < e0:
+                        jobs.append((_scan_range, (p, s0, e0, self.dir, wid, chunk, want_btc,
+                                                   self.cfg.btc_buckets, first_col)))
+                        sizes.append(e0 - s0)
+                        wid += 1
+        total = sum(sizes)
+        log(f"ingest: {len(jobs)} pieces, {total / 1e9:.2f} GB, {workers} workers, "
+            f"{'first value on each line only' if first_col else 'addresses anywhere in the text'}")
+        self._stage_t0 = time.time()
+        done = 0
+        self._progress("reading", 0, total, "bytes")
+        last = 0.0
         with ProcessPoolExecutor(max_workers=workers) as ex:
-            for st in ex.map(_scan_range, jobs):
+            futs = {ex.submit(fn, arg): sz for (fn, arg), sz in zip(jobs, sizes)}
+            for fut in as_completed(futs):
+                st = fut.result()
                 for k in stats:
-                    stats[k] += st[k]
+                    stats[k] += st.get(k, 0)
+                done += futs[fut]
+                if time.time() - last > 0.5 or done == total:
+                    self._progress("reading", done, total, "bytes")
+                    last = time.time()
+        for k in ("lines", "invalid_hex"):
+            stats[k] += packed_stats.get(k, 0)
         t1 = time.time()
-        log(f"ingest: parsed {total / 1e9:.2f} GB in {t1 - t0:.1f}s "
+        log(f"ingest: read {total / 1e9:.2f} GB in {t1 - t0:.1f}s "
             f"({total / 1e6 / max(t1 - t0, 1e-9):.0f} MB/s); deduping")
         evm_unique = btc_unique = 0
+        nb = EVM_BUCKETS + (self.cfg.btc_buckets if want_btc else 0)
+        self._stage_t0 = time.time()
+        self._progress("deduping", 0, nb, "buckets")
         with ProcessPoolExecutor(max_workers=workers) as ex:
-            for _, u in ex.map(_dedupe_evm, [(self.dir, b) for b in range(EVM_BUCKETS)]):
-                evm_unique += u
-            if want_btc:
-                for _, u in ex.map(_dedupe_btc, [(self.dir, b) for b in range(self.cfg.btc_buckets)]):
+            futs = [ex.submit(_dedupe_evm, (self.dir, b)) for b in range(EVM_BUCKETS)]
+            bfuts = [ex.submit(_dedupe_btc, (self.dir, b)) for b in range(self.cfg.btc_buckets)] if want_btc else []
+            k = 0
+            for fut in as_completed(futs + bfuts):
+                _, u = fut.result()
+                if fut in bfuts:
                     btc_unique += u
+                else:
+                    evm_unique += u
+                k += 1
+                if k % 8 == 0 or k == nb:
+                    self._progress("deduping", k, nb, "buckets")
         meta = {"inputs": [list(s) for s in sig], "btc": want_btc, "first_column": first_col, **stats,
                 "evm_unique": evm_unique, "evm_duplicates": stats["evm_raw"] - evm_unique,
                 "btc_unique": btc_unique, "btc_duplicates": stats["btc_raw"] - btc_unique,
                 "seconds": round(time.time() - t0, 2)}
+        if packed_stats:
+            meta["read_in_browser"] = True
+            meta["bytes"] = packed_stats.get("file_bytes", stats["bytes"])
+            meta["uploaded_bytes"] = stats["bytes"]
+            meta["lines_without_address"] = packed_stats.get("lines_without_address", 0)
+        elif first_col:
+            meta["lines_without_address"] = max(0, stats["lines"] - stats["evm_raw"] - stats["btc_raw"]
+                                                - stats["invalid_hex"])
         write_json_atomic(self.meta_path, meta)
+        self._progress("done", nb, nb, "buckets")
         log(f"ingest: {fmt_int(evm_unique)} unique 0x, {fmt_int(btc_unique)} unique BTC, "
             f"{fmt_int(stats['invalid_hex'])} malformed 0x tokens, {meta['seconds']}s total")
-        if first_col:
-            skipped = stats["lines"] - stats["evm_raw"] - stats["btc_raw"] - stats["invalid_hex"]
-            meta["lines_without_address"] = max(0, skipped)
-            write_json_atomic(self.meta_path, meta)
-            log(f"ingest: {fmt_int(stats['lines'])} lines, {fmt_int(max(0, skipped))} did not start with an address")
+        if "lines_without_address" in meta:
+            log(f"ingest: {fmt_int(stats['lines'])} lines, {fmt_int(meta['lines_without_address'])} "
+                "did not start with an address")
         return meta
