@@ -6,6 +6,7 @@ Batches that run out of gas or are too large are halved automatically, and the a
 smaller batch size for the rest of the run. Each 1/256th bucket is checkpointed when it finishes.
 """
 import asyncio
+import binascii
 import json
 import os
 import time
@@ -20,6 +21,21 @@ SPLIT_HINTS = ("gas", "out of", "too large", "exceed", "size", "limit exceeded",
                "timed out", "deadline", "payload")
 RATE_HINTS = ("rate", "too many", "429", "throttl", "capacity", "compute units", "quota")
 STATE_HINTS = ("missing trie node", "header not found", "state", "pruned", "unknown block", "not available")
+
+
+# Memory guard shared by every chain agent in the process: each call in flight holds its batch,
+# its hex text and the request body (~0.6 MB at 6,000 wallets). Seven chains x 115 calls was
+# enough to exhaust a 512 MB server, so the total is capped here.
+MAX_INFLIGHT = int(os.environ.get("CHAINSCAN_MAX_INFLIGHT", "256"))
+WORKERS_PER_CHAIN = int(os.environ.get("CHAINSCAN_WORKERS_PER_CHAIN", "64"))
+_inflight = None
+
+
+def _inflight_sem():
+    global _inflight
+    if _inflight is None:
+        _inflight = asyncio.Semaphore(MAX_INFLIGHT)
+    return _inflight
 
 
 class SplitNeeded(Exception):
@@ -89,9 +105,12 @@ class ChainAgent:
     # ---------- rpc ----------
     async def _post(self, ep, method, params):
         self.req_id += 1
-        body = {"jsonrpc": "2.0", "id": self.req_id, "method": method, "params": params}
+        body = json.dumps({"jsonrpc": "2.0", "id": self.req_id, "method": method, "params": params}).encode()
+        return await self._post_raw(ep, body)
+
+    async def _post_raw(self, ep, body: bytes):
         headers = {"content-type": "application/json", **ep.headers}
-        async with self.session.post(ep.url, json=body, headers=headers,
+        async with self.session.post(ep.url, data=body, headers=headers,
                                      timeout=aiohttp.ClientTimeout(total=self.c.timeout_s)) as r:
             text = await r.text()
             if r.status == 429:
@@ -128,13 +147,17 @@ class ChainAgent:
         self.blocks_used.append(self.block)
         self.last_repin = time.time()
 
-    async def _scan_call(self, chunk: bytes):
+    async def _scan_call(self, chunk):
+        async with _inflight_sem():
+            return await self._scan_call_inner(chunk)
+
+    async def _scan_call_inner(self, chunk):
         n = len(chunk) // 20
         pad = (-len(chunk)) % 32
-        data = self.prefix + _w32(len(chunk)) + chunk + bytes(pad)
-        tx = {"data": "0x" + data.hex()}
-        if self.c.call_gas:
-            tx["gas"] = hex(int(self.c.call_gas))
+        # build the JSON body as bytes directly: one copy of the hex instead of three
+        head = b'{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"data":"0x'
+        hexdata = binascii.hexlify(self.prefix + _w32(len(chunk)) + bytes(chunk) + bytes(pad))
+        gas = (b'","gas":"' + hex(int(self.c.call_gas)).encode()) if self.c.call_gas else b""
         last = None
         hard = rl = 0
         while hard < 6 and rl < 60:
@@ -145,7 +168,9 @@ class ChainAgent:
             t0 = time.time()
             outcome = "error"
             try:
-                res = await self._post(ep, "eth_call", [tx, hex(self.block)])
+                body = head + hexdata + gas + b'"},"' + hex(self.block).encode() + b'"]}'
+                res = await self._post_raw(ep, body)
+                del body
                 outcome = "ok"
                 self.calls += 1
                 return self._decode(res, n)
@@ -308,12 +333,12 @@ class ChainAgent:
         log(f"{self.key}: {len(todo)} buckets to scan at block {self.block}, "
             f"{self.apc} addresses per call, {self.pool.capacity} max parallel calls")
         self.status = "scanning"
-        workers = max(1, self.pool.capacity)
-        q = asyncio.Queue(maxsize=workers * 2)
+        workers = max(1, min(self.pool.capacity, WORKERS_PER_CHAIN))
+        q = asyncio.Queue(maxsize=min(16, workers * 2))
 
         async def producer():
             for b, p in todo:
-                data = open(p, "rb").read()
+                data = memoryview(open(p, "rb").read())   # slices below share this buffer, no copies
                 i = _bidx(b)
                 if i is not None:
                     self.grid[i] = ord("1")

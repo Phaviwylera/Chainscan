@@ -65,6 +65,14 @@ def cmd_scan(args):
     ingest = IngestAgent(cfg, run_dir)
     first_col = args.first_column or cfg.first_column
     meta = ingest.run(args.inputs, want_btc, first_col)
+    if os.environ.get("CHAINSCAN_DROP_PARTS") == "1":
+        # the sorted buckets now hold everything: free the uploaded parts (Render free /tmp is 2 GB)
+        from .ingest import is_packed
+        import glob as _glob
+        for p in args.inputs:
+            if is_packed(p):
+                for part in _glob.glob(os.path.join(p, "*.part")):
+                    os.remove(part)
     only = set(args.only.split(",")) if args.only else None
     progress = asyncio.run(_scan_async(cfg, run_dir, ingest, want_btc, only))
     summary = WriterAgent(cfg, run_dir).run(meta, progress)
