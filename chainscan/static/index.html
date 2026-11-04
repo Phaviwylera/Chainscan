@@ -11,13 +11,13 @@
 :root{
   --bg:#f3f4f7; --panel:#fff; --ink:#151a24; --muted:#5d6577; --line:#dde1e9; --track:#e6e8f0;
   --accent:#4655d4; --accent-ink:#fff; --good:#13804f; --warn:#a8650b; --bad:#c23a3a;
-  --eth:#5a67d8; --bsc:#b7860b; --btc:#d1700f;
+  --eth:#5a67d8; --bsc:#b7860b; --btc:#d1700f; --base:#1f5fe0;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
   --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; color-scheme:light}
 @media (prefers-color-scheme:dark){:root{
   --bg:#0f1218; --panel:#171b24; --ink:#e7eaf2; --muted:#98a0b3; --line:#2a303d; --track:#232937;
   --accent:#8592ff; --accent-ink:#0f1218; --good:#3fca8a; --warn:#e9a640; --bad:#f07070;
-  --eth:#8f9bff; --bsc:#f0c24a; --btc:#f7a04b; color-scheme:dark}}
+  --eth:#8f9bff; --bsc:#f0c24a; --btc:#f7a04b; --base:#6f9cff; color-scheme:dark}}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
@@ -120,7 +120,7 @@ pre.log{margin:0;max-height:240px;overflow:auto;background:var(--bg);border:1px 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const COLORS = {eth:"var(--eth)", bsc:"var(--bsc)", btc:"var(--btc)"};
+  const COLORS = {eth:"var(--eth)", bsc:"var(--bsc)", btc:"var(--btc)", base:"var(--base)"};
   let token = ""; try{ token = localStorage.getItem("cs_token") || ""; }catch{}
   let info = null, sel = null, tab = "file", pollT = null;
   const fmt = n => (n ?? 0).toLocaleString("en-IN");
