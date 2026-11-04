@@ -1,8 +1,8 @@
 #!/bin/bash
-# EC2 user data for chainscan (Amazon Linux 2023). Placeholders __REGION__ __BUCKET__ __KEY__ __PARAM__
-# are filled in at launch. Secrets are NOT here: deploy.sh reads them from SSM Parameter Store.
+# EC2 user data for chainscan (Amazon Linux 2023). Placeholders __REGION__ __PARAM__ __REPO__ __BRANCH__
+# are filled in at launch. No secrets here: the GitHub read token and app keys live in SSM Parameter Store.
 set -euxo pipefail
-dnf install -y docker
+dnf install -y docker git
 systemctl enable --now docker
 ARCH=$(uname -m)
 mkdir -p /usr/local/lib/docker/cli-plugins
@@ -12,11 +12,12 @@ chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 mkdir -p /opt/chainscan/{data,caddy}
 cat > /opt/chainscan/deploy.conf <<CONF
 REGION=__REGION__
-BUCKET=__BUCKET__
-KEY=__KEY__
 PARAM=__PARAM__
+REPO=__REPO__
+BRANCH=__BRANCH__
 CONF
-aws s3 cp "s3://__BUCKET__/__KEY__" /tmp/bundle.tgz --region __REGION__
-mkdir -p /tmp/bundle && tar -xf /tmp/bundle.tgz -C /tmp/bundle
-install -m 755 /tmp/bundle/deploy/ec2/deploy.sh /opt/chainscan/deploy.sh
+GH=$(aws ssm get-parameter --name "__PARAM__/deploy/GITHUB_TOKEN" --with-decryption --region __REGION__ --query Parameter.Value --output text)
+git clone --depth 1 -b __BRANCH__ "https://x-access-token:${GH}@github.com/__REPO__.git" /tmp/chainscan-src
+install -m 755 /tmp/chainscan-src/deploy/ec2/deploy.sh /opt/chainscan/deploy.sh
+rm -rf /tmp/chainscan-src
 /opt/chainscan/deploy.sh
