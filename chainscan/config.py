@@ -72,6 +72,7 @@ class Config:
     ingest_chunk_mb: int = 64
     btc_buckets: int = 64
     progress_every_s: float = 2.0
+    first_column: bool = False
 
 
 def _endpoints(lst) -> List[Endpoint]:
@@ -149,4 +150,5 @@ def load(path: str) -> Config:
                   ingest_workers=int(os.environ.get("CHAINSCAN_INGEST_WORKERS") or ing.get("workers", 0)),
                   ingest_chunk_mb=int(os.environ.get("CHAINSCAN_CHUNK_MB") or ing.get("chunk_mb", 64)),
                   btc_buckets=int(ing.get("btc_buckets", 64)),
+                  first_column=bool(ing.get("first_column", False)),
                   progress_every_s=float(raw.get("progress_every_s", 2.0)))

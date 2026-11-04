@@ -21,6 +21,10 @@ from .util import fmt_int, log, write_json_atomic
 
 HEX_RE = re.compile(rb"0x([0-9a-fA-F]+)")
 BTC_RE = re.compile(rb"(?<![0-9A-Za-z])(bc1[02-9ac-hj-np-z]{11,71}|[13][1-9A-HJ-NP-Za-km-z]{25,34})(?![0-9A-Za-z])")
+# first-column mode: only the first value on each line counts (optional BOM, spaces or a quote first)
+_LEAD = rb"(?m)^(?:\xef\xbb\xbf)?[ \t\"']*"
+HEX_FIRST_RE = re.compile(_LEAD + rb"0x([0-9a-fA-F]+)")
+BTC_FIRST_RE = re.compile(_LEAD + rb"(bc1[02-9ac-hj-np-z]{11,71}|[13][1-9A-HJ-NP-Za-km-z]{25,34})(?![0-9A-Za-z])")
 TOKEN = frozenset(b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 EVM_BUCKETS = 256
 # how much parsed data a worker holds before writing it to bucket files (lower on small instances)
@@ -50,13 +54,18 @@ def _flush(outdir, wid, evm_parts, btc_parts, nbtc):
 
 
 def _scan_range(args):
-    path, start, end, outdir, wid, chunk, want_btc, nbtc = args
-    stats = {"bytes": 0, "evm_raw": 0, "invalid_hex": 0, "btc_raw": 0}
+    path, start, end, outdir, wid, chunk, want_btc, nbtc, first_col = args
+    stats = {"bytes": 0, "lines": 0, "evm_raw": 0, "invalid_hex": 0, "btc_raw": 0}
+    hex_re, btc_re = (HEX_FIRST_RE, BTC_FIRST_RE) if first_col else (HEX_RE, BTC_RE)
     with open(path, "rb") as f:
         if start > 0:
             f.seek(start - 1)
             prev = f.read(1)
-            if prev and prev[0] in TOKEN:  # we landed mid-token: the previous worker owns it
+            if first_col:
+                if prev != b"\n":  # mid-line: the previous worker owns this line
+                    f.readline()
+                    start = f.tell()
+            elif prev and prev[0] in TOKEN:  # mid-token: the previous worker owns it
                 while True:
                     b = f.read(1)
                     start += 1
@@ -72,25 +81,37 @@ def _scan_range(args):
             pos += len(data)
             buf = carry + data
             if pos < end:
-                i = len(buf) - 1
-                lim = max(0, len(buf) - 4096)
-                while i > lim and buf[i] in TOKEN:
-                    i -= 1
+                if first_col:  # cut at the last full line so every buffer starts at a line start
+                    i = buf.rfind(b"\n")
+                    if i < 0 and len(buf) < 4 * chunk:
+                        carry = buf
+                        stats["bytes"] += len(data)
+                        continue
+                else:
+                    i = len(buf) - 1
+                    lim = max(0, len(buf) - 4096)
+                    while i > lim and buf[i] in TOKEN:
+                        i -= 1
                 carry, buf = buf[i + 1:], buf[:i + 1]
-            else:  # finish a token that runs past our range end
+            else:  # finish the line / token that runs past our range end
                 carry = b""
-                while True:
-                    more = f.read(256)
-                    if not more:
-                        break
-                    j = 0
-                    while j < len(more) and more[j] in TOKEN:
-                        j += 1
-                    buf += more[:j]
-                    if j < len(more):
-                        break
+                if first_col:
+                    if not buf.endswith(b"\n"):
+                        buf += f.readline()
+                else:
+                    while True:
+                        more = f.read(256)
+                        if not more:
+                            break
+                        j = 0
+                        while j < len(more) and more[j] in TOKEN:
+                            j += 1
+                        buf += more[:j]
+                        if j < len(more):
+                            break
             stats["bytes"] += len(data)
-            hexes = HEX_RE.findall(buf)
+            stats["lines"] += buf.count(b"\n")
+            hexes = hex_re.findall(buf)
             good = [h for h in hexes if len(h) == 40]
             stats["invalid_hex"] += len(hexes) - len(good)
             if good:
@@ -99,7 +120,7 @@ def _scan_range(args):
                 stats["evm_raw"] += len(good)
                 pending += len(good) * 20
             if want_btc:
-                found = BTC_RE.findall(buf)
+                found = btc_re.findall(buf)
                 for a in found:
                     btc_parts.append(a.lower() if a[:3] == b"bc1" else a)
                 stats["btc_raw"] += len(found)
@@ -157,12 +178,13 @@ class IngestAgent:
     def btc_buckets(self):
         return sorted(glob.glob(os.path.join(self.dir, "btc", "u_b*.txt")))
 
-    def run(self, inputs, want_btc):
+    def run(self, inputs, want_btc, first_col=False):
         sig = [(os.path.abspath(p), os.path.getsize(p), int(os.path.getmtime(p))) for p in inputs]
         if os.path.exists(self.meta_path):
             import json
             meta = json.load(open(self.meta_path))
-            if meta.get("inputs") == [list(s) for s in sig] and meta.get("btc") == want_btc:
+            if (meta.get("inputs") == [list(s) for s in sig] and meta.get("btc") == want_btc
+                    and meta.get("first_column", False) == first_col):
                 log(f"ingest: reusing earlier pass ({fmt_int(meta['evm_unique'])} 0x, "
                     f"{fmt_int(meta['btc_unique'])} BTC unique)")
                 return meta
@@ -175,7 +197,8 @@ class IngestAgent:
         workers = self.cfg.ingest_workers or os.cpu_count() or 2
         chunk = self.cfg.ingest_chunk_mb * 1024 * 1024
         total = sum(s[1] for s in sig)
-        log(f"ingest: reading {len(inputs)} file(s), {total / 1e9:.2f} GB, {workers} workers")
+        log(f"ingest: reading {len(inputs)} file(s), {total / 1e9:.2f} GB, {workers} workers, "
+            f"{'first value on each line only' if first_col else 'addresses anywhere in the text'}")
         t0 = time.time()
         jobs, wid = [], 0
         for p, size, _ in sig:
@@ -184,9 +207,9 @@ class IngestAgent:
             for i in range(parts):
                 s, e = i * step, min(size, (i + 1) * step)
                 if s < e:
-                    jobs.append((p, s, e, self.dir, wid, chunk, want_btc, self.cfg.btc_buckets))
+                    jobs.append((p, s, e, self.dir, wid, chunk, want_btc, self.cfg.btc_buckets, first_col))
                     wid += 1
-        stats = {"bytes": 0, "evm_raw": 0, "invalid_hex": 0, "btc_raw": 0}
+        stats = {"bytes": 0, "lines": 0, "evm_raw": 0, "invalid_hex": 0, "btc_raw": 0}
         with ProcessPoolExecutor(max_workers=workers) as ex:
             for st in ex.map(_scan_range, jobs):
                 for k in stats:
@@ -201,11 +224,16 @@ class IngestAgent:
             if want_btc:
                 for _, u in ex.map(_dedupe_btc, [(self.dir, b) for b in range(self.cfg.btc_buckets)]):
                     btc_unique += u
-        meta = {"inputs": [list(s) for s in sig], "btc": want_btc, **stats,
+        meta = {"inputs": [list(s) for s in sig], "btc": want_btc, "first_column": first_col, **stats,
                 "evm_unique": evm_unique, "evm_duplicates": stats["evm_raw"] - evm_unique,
                 "btc_unique": btc_unique, "btc_duplicates": stats["btc_raw"] - btc_unique,
                 "seconds": round(time.time() - t0, 2)}
         write_json_atomic(self.meta_path, meta)
         log(f"ingest: {fmt_int(evm_unique)} unique 0x, {fmt_int(btc_unique)} unique BTC, "
             f"{fmt_int(stats['invalid_hex'])} malformed 0x tokens, {meta['seconds']}s total")
+        if first_col:
+            skipped = stats["lines"] - stats["evm_raw"] - stats["btc_raw"] - stats["invalid_hex"]
+            meta["lines_without_address"] = max(0, skipped)
+            write_json_atomic(self.meta_path, meta)
+            log(f"ingest: {fmt_int(stats['lines'])} lines, {fmt_int(max(0, skipped))} did not start with an address")
         return meta

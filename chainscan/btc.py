@@ -10,7 +10,6 @@ mode: esplora   (no node needed, slower)
     Blockstream, or a paid provider). Uses the same adaptive EndpointPool as the EVM agents.
 """
 import asyncio
-import glob
 import json
 import os
 import time

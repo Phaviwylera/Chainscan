@@ -104,6 +104,8 @@ pre.log{margin:0;max-height:240px;overflow:auto;background:var(--bg);border:1px 
             <p class="note" style="margin-top:6px">The server downloads the file itself, so a 10 GB file never goes through your browser.</p>
           </div>
           <div><div class="lbl" style="margin-bottom:6px">Chains</div><div class="row" id="chainBox"></div></div>
+          <label class="row" style="gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="firstCol" checked style="margin-top:4px">
+            <span><b>Address is the first value on each line</b><br><span class="note">Only that address is scanned; everything after it on the line is ignored and never stored. Untick to pick up addresses anywhere in the text.</span></span></label>
           <input type="text" id="jobName" placeholder="Name (optional)">
           <div class="row"><button class="primary" id="start">Start scan</button><span class="note" id="upMsg"></span></div>
           <div class="bar" id="upBar" hidden><i style="background:var(--accent)"></i></div>
@@ -172,7 +174,7 @@ pre.log{margin:0;max-height:240px;overflow:auto;background:var(--bg);border:1px 
     if(!chains.length){ $("upMsg").textContent = "Pick at least one chain."; return; }
     $("start").disabled = true; $("upMsg").textContent = "";
     try{
-      const body = {chains, name: $("jobName").value.trim()};
+      const body = {chains, name: $("jobName").value.trim(), first_column: $("firstCol").checked};
       if(tab === "file"){
         const f = $("file").files[0]; if(!f) throw new Error("Choose a file first.");
         const u = await uploadFile(f); body.upload_id = u.upload_id; body.upload_name = f.name;
@@ -214,7 +216,7 @@ pre.log{margin:0;max-height:240px;overflow:auto;background:var(--bg);border:1px 
       html += `<div class="chain"><div class="top"><b>Downloading input</b><span class="mono">${(j.downloaded/1e9).toFixed(2)} GB${j.download_total ? " / "+(j.download_total/1e9).toFixed(2)+" GB" : ""}</span></div><div class="bar"><i style="width:${pct}%;background:var(--accent)"></i></div></div>`;
     }
     if(ing){
-      html += `<div class="kv"><span>Read <b>${(ing.bytes/1e9).toFixed(2)} GB</b></span><span>0x unique <b>${fmt(ing.evm_unique)}</b></span><span>BTC unique <b>${fmt(ing.btc_unique)}</b></span><span>Duplicates <b>${fmt((ing.evm_duplicates||0)+(ing.btc_duplicates||0))}</b></span><span>Malformed <b>${fmt(ing.invalid_hex)}</b></span><span>Ingest <b>${secs(ing.seconds)}</b></span></div>`;
+      html += `<div class="kv"><span>Read <b>${(ing.bytes/1e9).toFixed(2)} GB</b></span><span>0x unique <b>${fmt(ing.evm_unique)}</b></span><span>BTC unique <b>${fmt(ing.btc_unique)}</b></span><span>Duplicates <b>${fmt((ing.evm_duplicates||0)+(ing.btc_duplicates||0))}</b></span><span>Malformed <b>${fmt(ing.invalid_hex)}</b></span>${ing.first_column ? `<span>Lines without an address <b>${fmt(ing.lines_without_address)}</b></span><span>Mode <b>first value per line</b></span>` : ""}<span>Ingest <b>${secs(ing.seconds)}</b></span></div>`;
     } else if(j.status === "running"){
       html += `<p class="note">Reading and deduplicating the input…</p>`;
     }

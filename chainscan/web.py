@@ -119,7 +119,8 @@ async def create_job(request):
     jid = new_id()
     job = {"id": jid, "created": time.time(), "status": "queued", "name": body.get("name") or "",
            "chains": [c for c in (body.get("chains") or []) if isinstance(c, str)],
-           "upload_id": None, "url": None, "input": None}
+           "upload_id": None, "url": None, "input": None,
+           "first_column": bool(body.get("first_column", True))}
     if body.get("upload_id"):
         p = os.path.join(UPLOADS, safe_id(body["upload_id"]) + ".txt")
         if not os.path.exists(p):
@@ -154,6 +155,8 @@ async def run_job(jid):
         cmd = [sys.executable, "-m", "chainscan", "scan", job["input"], "-c", CONFIG, "--run-dir", run_dir]
         if job["chains"]:
             cmd += ["--only", ",".join(job["chains"])]
+        if job.get("first_column"):
+            cmd.append("--first-column")
         log = open(os.path.join(run_dir, "log.txt"), "ab")
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=log, stderr=asyncio.subprocess.STDOUT,
                                                     start_new_session=True)

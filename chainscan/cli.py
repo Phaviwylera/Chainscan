@@ -63,7 +63,8 @@ def cmd_scan(args):
     t0 = time.time()
     want_btc = cfg.btc.enabled
     ingest = IngestAgent(cfg, run_dir)
-    meta = ingest.run(args.inputs, want_btc)
+    first_col = args.first_column or cfg.first_column
+    meta = ingest.run(args.inputs, want_btc, first_col)
     only = set(args.only.split(",")) if args.only else None
     progress = asyncio.run(_scan_async(cfg, run_dir, ingest, want_btc, only))
     summary = WriterAgent(cfg, run_dir).run(meta, progress)
@@ -92,6 +93,8 @@ def main():
     s.add_argument("--run-dir", default="runs/latest")
     s.add_argument("--fresh", action="store_true", help="discard checkpoints in run-dir and start over")
     s.add_argument("--only", help="comma list of chain keys to scan, e.g. eth,btc")
+    s.add_argument("--first-column", action="store_true",
+                   help="use only the first value on each line (lines start with the address; the rest is ignored)")
     s.set_defaults(fn=cmd_scan)
     r = sub.add_parser("report", help="AnalystAgent: Claude on Bedrock writes report.md for a finished run")
     r.add_argument("run_dir")

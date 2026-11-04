@@ -88,7 +88,9 @@ python -m chainscan report runs/first -c config.yaml   # optional, needs AWS cre
 
 Docker: `docker build -t chainscan . && docker run -v $PWD:/work chainscan scan /work/wallets.csv -c /work/config.yaml --run-dir /work/runs/first`
 
-Options: `--only eth,btc` scans just those chains; `--fresh` throws away the checkpoints.
+Options: `--only eth,btc` scans just those chains; `--fresh` throws away the checkpoints;
+`--first-column` uses only the address at the start of each line and ignores the rest of the line
+(the website has this on by default). Without it, addresses are picked up anywhere in the text.
 
 ## Output (in the run directory)
 
