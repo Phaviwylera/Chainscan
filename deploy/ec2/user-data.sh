@@ -17,6 +17,6 @@ KEY=__KEY__
 PARAM=__PARAM__
 CONF
 aws s3 cp "s3://__BUCKET__/__KEY__" /tmp/bundle.tgz --region __REGION__
-mkdir -p /tmp/bundle && tar -xzf /tmp/bundle.tgz -C /tmp/bundle
+mkdir -p /tmp/bundle && tar -xf /tmp/bundle.tgz -C /tmp/bundle
 install -m 755 /tmp/bundle/deploy/ec2/deploy.sh /opt/chainscan/deploy.sh
 /opt/chainscan/deploy.sh

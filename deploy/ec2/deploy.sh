@@ -5,7 +5,7 @@ set -euxo pipefail
 source /opt/chainscan/deploy.conf      # REGION, BUCKET, KEY, PARAM
 cd /opt/chainscan
 aws s3 cp "s3://${BUCKET}/${KEY}" /opt/chainscan/bundle.tgz --region "$REGION"
-rm -rf src.new && mkdir src.new && tar -xzf bundle.tgz -C src.new
+rm -rf src.new && mkdir src.new && tar -xf bundle.tgz -C src.new
 rm -rf src && mv src.new src
 cp src/deploy/ec2/docker-compose.yml src/deploy/ec2/Caddyfile /opt/chainscan/
 # secrets -> app.env (never stored in user data or the bundle)
