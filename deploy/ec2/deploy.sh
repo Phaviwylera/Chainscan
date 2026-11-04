@@ -15,6 +15,7 @@ aws ssm get-parameters-by-path --path "$PARAM" --with-decryption --region "$REGI
 chmod 600 app.env.new && mv app.env.new app.env
 TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
 IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
-echo "SITE_HOST=${SITE_HOST_OVERRIDE:-${IP//./-}.sslip.io}" > .env
+SITE=$(grep '^SITE_HOST=' app.env | cut -d= -f2- || true)   # set at launch from the Elastic IP
+echo "SITE_HOST=${SITE:-${IP//./-}.sslip.io}" > .env
 docker compose up -d --build
 docker image prune -f
