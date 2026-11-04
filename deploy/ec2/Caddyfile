@@ -1,0 +1,9 @@
+{$SITE_HOST} {
+	encode gzip
+	reverse_proxy app:10000 {
+		transport http {
+			read_timeout 30m
+			write_timeout 30m
+		}
+	}
+}

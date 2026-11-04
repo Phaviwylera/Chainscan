@@ -1,0 +1,23 @@
+# chainscan on one EC2 instance: the app plus Caddy for automatic HTTPS.
+services:
+  app:
+    build: /opt/chainscan/src
+    image: chainscan:latest
+    restart: unless-stopped
+    env_file: /opt/chainscan/app.env
+    environment:
+      DATA_DIR: /data
+      PORT: "10000"
+    volumes:
+      - /opt/chainscan/data:/data
+    expose: ["10000"]
+  caddy:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      SITE_HOST: ${SITE_HOST}
+    volumes:
+      - /opt/chainscan/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/chainscan/caddy:/data
+    depends_on: [app]
