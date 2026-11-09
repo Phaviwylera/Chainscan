@@ -11,7 +11,9 @@ import asyncio
 from aiohttp import web
 
 
-def make_app(latency, every, nt, gas_cap_n=0, rate_limit=0.0, fail_all=False):
+def make_app(latency, every, nt, gas_cap_n=0, rate_limit=0.0, fail_all=False, rps=0):
+    import time as _t
+    bucket = {'tokens': float(rps), 'ts': _t.time()}
     import random
     async def handle(req):
         body = await req.read()
@@ -28,6 +30,11 @@ def make_app(latency, every, nt, gas_cap_n=0, rate_limit=0.0, fail_all=False):
         n = max(0, (hexlen // 2 - PREFIX - 32) // 20)
         if fail_all:
             return web.json_response({'jsonrpc': '2.0', 'id': 1, 'error': {'code': -32600, 'message': 'BNB_MAINNET is not enabled for this app'}}, status=403)
+        if rps:
+            now = _t.time(); bucket['tokens'] = min(rps, bucket['tokens'] + (now - bucket['ts']) * rps); bucket['ts'] = now
+            if bucket['tokens'] < 1:
+                return web.json_response({'jsonrpc': '2.0', 'id': 1, 'error': {'code': 429, 'message': 'Your app has exceeded its compute units per second capacity'}}, status=429)
+            bucket['tokens'] -= 1
         if rate_limit and random.random() < rate_limit:
             return web.json_response({'jsonrpc': '2.0', 'id': 1, 'error': {'code': 429, 'message': 'Too many requests, rate limit exceeded'}})
         if gas_cap_n and n > gas_cap_n:
@@ -54,8 +61,9 @@ if __name__ == "__main__":
     ap.add_argument("--funded-every", type=int, default=200)
     ap.add_argument("--assets", type=int, default=4)
     ap.add_argument("--gas-cap-n", type=int, default=0, help="reject batches larger than this with an out-of-gas error")
+    ap.add_argument("--rps", type=float, default=0, help="account-wide calls/second; above it every call gets 429")
     ap.add_argument("--fail-all", action="store_true", help="reject every call, like a network not enabled on the key")
     ap.add_argument("--rate-limit", type=float, default=0.0, help="fraction of calls answered with a 429-style error")
     a = ap.parse_args()
     PREFIX = len(SCANNER_INITCODE) + 32 * 3 + 32 * a.assets
-    web.run_app(make_app(a.latency, a.funded_every, a.assets, a.gas_cap_n, a.rate_limit, a.fail_all), port=a.port, print=None, access_log=None)
+    web.run_app(make_app(a.latency, a.funded_every, a.assets, a.gas_cap_n, a.rate_limit, a.fail_all, a.rps), port=a.port, print=None, access_log=None)

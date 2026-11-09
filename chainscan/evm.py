@@ -19,7 +19,8 @@ from .util import fmt_units, log, touch
 
 SPLIT_HINTS = ("gas", "out of", "too large", "exceed", "size", "limit exceeded", "body", "timeout",
                "timed out", "deadline", "payload")
-RATE_HINTS = ("rate", "too many", "429", "throttl", "capacity", "compute units", "quota")
+RATE_HINTS = ("rate", "too many", "429", "503", "throttl", "capacity", "compute units", "quota",
+              "busy", "try again")
 STATE_HINTS = ("missing trie node", "header not found", "state", "pruned", "unknown block", "not available")
 
 
@@ -113,8 +114,8 @@ class ChainAgent:
         async with self.session.post(ep.url, data=body, headers=headers,
                                      timeout=aiohttp.ClientTimeout(total=self.c.timeout_s)) as r:
             text = await r.text()
-            if r.status == 429:
-                raise RpcFailed("429 rate limited")
+            if r.status in (429, 503):
+                raise RpcFailed(f"{r.status} rate limited")
             if r.status == 413:
                 raise SplitNeeded("413 payload too large")
             if r.status >= 400:
@@ -168,7 +169,8 @@ class ChainAgent:
             t0 = time.time()
             outcome = "error"
             try:
-                body = head + hexdata + gas + b'"},"' + hex(self.block).encode() + b'"]}'
+                tag = hex(self.block) if (self.c.pin_block and self.block is not None) else "latest"
+                body = head + hexdata + gas + b'"},"' + tag.encode() + b'"]}'
                 res = await self._post_raw(ep, body)
                 del body
                 outcome = "ok"
@@ -188,7 +190,8 @@ class ChainAgent:
                     rl += 1
                 elif any(h in msg for h in STATE_HINTS):
                     outcome = "neutral"
-                    if time.time() - self.last_repin > 10:
+                    if self.c.pin_block and time.time() - self.last_repin > 10:
+                        self.last_repin = time.time()   # claim the re-pin so parallel calls don't repeat it
                         self.repins += 1
                         log(f"{self.key}: node lost block {self.block} state, moving to latest")
                         try:
@@ -329,7 +332,12 @@ class ChainAgent:
             self.finished = time.time()
             return
         self.status = "pinning block"
-        await self.pin_block()
+        try:
+            await asyncio.wait_for(self.pin_block(), timeout=60)
+        except (asyncio.TimeoutError, RpcFailed) as e:
+            if self.c.pin_block:
+                raise RpcFailed(f"no endpoint answered eth_blockNumber within 60 s ({e!r})") from None
+            self.block = None   # unpinned chains read "latest" anyway
         log(f"{self.key}: {len(todo)} buckets to scan at block {self.block}, "
             f"{self.apc} addresses per call, {self.pool.capacity} max parallel calls")
         self.status = "scanning"

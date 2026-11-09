@@ -40,6 +40,7 @@ class ChainCfg:
     call_gas: Optional[int] = None    # pass an explicit gas value in eth_call (some providers need it)
     timeout_s: float = 60.0
     explorer: str = ""
+    pin_block: bool = True   # read every batch at one block; off for fast chains whose nodes prune state in seconds
 
     def addresses_per_call(self) -> int:
         per = self.gas_per_asset * max(1, len(self.assets)) + 400
@@ -147,6 +148,7 @@ def load(path: str) -> Config:
             max_addresses_per_call=int(c.get("max_addresses_per_call", 3_000)),
             min_addresses_per_call=int(c.get("min_addresses_per_call", 25)),
             call_gas=c.get("call_gas"), timeout_s=float(c.get("timeout_s", 60)),
+            pin_block=bool(c.get("pin_block", True)),
             explorer=c.get("explorer", "")))
     b = raw.get("btc") or {}
     btc = BtcCfg(enabled=bool(b.get("enabled", False)), mode=b.get("mode", "snapshot"),

@@ -39,6 +39,7 @@ chains:
   bsc:
     name: BNB Chain
     explorer: https://bscscan.com/address/
+    pin_block: false          # fast blocks: nodes drop old state in seconds, so read "latest"
     gas_budget: 120000000
     max_addresses_per_call: 6000
     rpcs:
@@ -59,6 +60,7 @@ chains:
   base:
     name: Base
     explorer: https://basescan.org/address/
+    pin_block: false          # fast blocks: nodes drop old state in seconds, so read "latest"
     gas_budget: 120000000
     max_addresses_per_call: 6000
     rpcs:
@@ -79,6 +81,7 @@ chains:
   polygon:
     name: Polygon
     explorer: https://polygonscan.com/address/
+    pin_block: false          # fast blocks: nodes drop old state in seconds, so read "latest"
     gas_budget: 120000000
     max_addresses_per_call: 6000
     rpcs:
@@ -97,6 +100,7 @@ chains:
   arbitrum:
     name: Arbitrum
     explorer: https://arbiscan.io/address/
+    pin_block: false          # fast blocks: nodes drop old state in seconds, so read "latest"
     gas_budget: 120000000
     max_addresses_per_call: 6000
     rpcs:
@@ -115,6 +119,7 @@ chains:
   optimism:
     name: Optimism
     explorer: https://optimistic.etherscan.io/address/
+    pin_block: false          # fast blocks: nodes drop old state in seconds, so read "latest"
     gas_budget: 120000000
     max_addresses_per_call: 6000
     rpcs:
@@ -133,6 +138,7 @@ chains:
   avalanche:
     name: Avalanche
     explorer: https://snowtrace.io/address/
+    pin_block: false          # fast blocks: nodes drop old state in seconds, so read "latest"
     gas_budget: 120000000
     max_addresses_per_call: 6000
     rpcs:
