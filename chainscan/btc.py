@@ -66,6 +66,9 @@ class BtcAgent:
         con = duckdb.connect()
         con.execute("PRAGMA threads=%d" % (os.cpu_count() or 2))
         con.execute(f"PRAGMA memory_limit='{os.environ.get('CHAINSCAN_DUCKDB_MEMORY', '3GB')}'")
+        tmpd = os.path.join(self.out_dir, "duckdb_tmp")
+        os.makedirs(tmpd, exist_ok=True)
+        con.execute(f"PRAGMA temp_directory='{tmpd}'")
         files = [p.replace("'", "''") for p in bucket_files]
         lst = "[" + ",".join(f"'{p}'" for p in files) + "]"
         con.execute(f"CREATE TABLE inp AS SELECT DISTINCT column0 AS address FROM read_csv({lst}, "
@@ -83,17 +86,16 @@ class BtcAgent:
         con.execute(f"""
             COPY (
               WITH s AS ({source})
-              SELECT i.address, 'btc' AS chain, 'BTC' AS asset, s.sats AS raw
+              SELECT i.address, 'btc' AS chain, 'BTC' AS asset, CAST(s.sats AS VARCHAR) AS raw,
+                     CAST(s.sats // 100000000 AS VARCHAR) ||
+                     CASE WHEN s.sats % 100000000 = 0 THEN ''
+                          ELSE '.' || rtrim(lpad(CAST(s.sats % 100000000 AS VARCHAR), 8, '0'), '0') END AS balance
               FROM inp i JOIN s USING (address) WHERE s.sats > 0
-            ) TO '{out}' (HEADER false)""")
-        rows = []
-        with open(os.path.join(self.out_dir, "snapshot.csv")) as f:
-            for line in f:
-                a, ch, sym, raw = line.rstrip("\n").split(",")
-                rows.append(f"{a},{ch},{sym},{raw},{fmt_units(int(raw), 8)}\n")
-        with open(os.path.join(self.out_dir, "snapshot.csv"), "w") as f:
-            f.writelines(rows)
-        self.funded_entries = len(rows)
+            ) TO '{out}' (HEADER false, QUOTE '')""")
+        # streamed by DuckDB on disk, so even crores of matches never sit in Python memory
+        self.funded_entries = con.execute(
+            f"SELECT count(*) FROM read_csv('{out}', header=false, columns={{'a':'VARCHAR','c':'VARCHAR',"
+            "'s':'VARCHAR','r':'VARCHAR','b':'VARCHAR'})").fetchone()[0]
         self.done = self.total
         touch(done_mark)
 

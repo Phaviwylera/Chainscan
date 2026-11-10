@@ -14,7 +14,7 @@ import json
 import os
 import time
 
-from .util import log, write_json_atomic
+from .util import fmt_units, log, write_json_atomic
 
 
 def _q(p):
@@ -51,9 +51,9 @@ def build(src: str, out_parquet: str, meta_path: str = None) -> dict:
         ) TO '{_q(tmp)}' (FORMAT PARQUET, COMPRESSION ZSTD)""")
     os.replace(tmp, out_parquet)
     rows, funded, total = con.execute(
-        f"SELECT count(*), count(*) FILTER (WHERE sats > 0), sum(sats) FROM read_parquet('{_q(out_parquet)}')").fetchone()
+        f"SELECT count(*), count(*) FILTER (WHERE sats > 0), CAST(sum(CAST(sats AS HUGEINT)) AS VARCHAR) FROM read_parquet('{_q(out_parquet)}')").fetchone()
     meta = {"state": "ready", "source_name": os.path.basename(src), "rows": int(rows), "funded": int(funded),
-            "total_btc": f"{int(total or 0) / 1e8:.8f}", "address_column": acol, "balance_column": bcol,
+            "total_btc": fmt_units(int(total or 0), 8), "address_column": acol, "balance_column": bcol,
             "parquet_bytes": os.path.getsize(out_parquet), "built_at": time.time(), "seconds": round(time.time() - t0, 1)}
     if meta_path:
         old = {}
