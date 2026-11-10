@@ -28,6 +28,11 @@ RUNS = os.path.join(DATA, "runs")
 JOBS_FILE = os.path.join(DATA, "jobs.json")
 OUT_FILES = ("funded.csv", "funded_wide.csv", "summary.json", "report.md", "progress.json")
 
+BTC_DIR = os.path.join(DATA, "btc")
+BTC_PARQUET = os.path.join(BTC_DIR, "snapshot.parquet")
+BTC_META = os.path.join(BTC_DIR, "meta.json")
+btc_task = {"task": None}
+
 jobs = {}           # id -> dict
 queue = asyncio.Queue()
 running = {"id": None, "proc": None}
@@ -92,6 +97,109 @@ async def upload(request):
             f.write(text)
         size = os.path.getsize(path)
     return web.json_response({"upload_id": uid, "name": name, "bytes": size})
+
+
+# ---------------- Bitcoin balance source (address -> balance dump, e.g. Blockchair) ----------------
+def btc_meta():
+    m = read_json(BTC_META) or {}
+    m["ready"] = os.path.exists(BTC_PARQUET) and m.get("state") == "ready"
+    return m
+
+
+def _btc_set(**kw):
+    os.makedirs(BTC_DIR, exist_ok=True)
+    m = read_json(BTC_META) or {}
+    m.update(kw, updated=time.time())
+    tmp = BTC_META + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(m, f)
+    os.replace(tmp, BTC_META)
+
+
+async def _btc_build(src, name):
+    _btc_set(state="building", source_name=name, error=None, progress=None)
+    log = open(os.path.join(BTC_DIR, "build.log"), "ab")
+    proc = await asyncio.create_subprocess_exec(sys.executable, "-m", "chainscan", "btc-source", src, BTC_PARQUET,
+                                                "--meta", BTC_META, stdout=log, stderr=asyncio.subprocess.STDOUT)
+    rc = await proc.wait()
+    log.close()
+    if rc != 0:
+        _btc_set(state="failed", error=f"could not read the file (exit {rc}); see btc/build.log on the server")
+    else:
+        _btc_set(source_name=name)
+    try:
+        os.remove(src)   # the Parquet table holds everything; free the space
+    except OSError:
+        pass
+
+
+async def btc_source_get(request):
+    return web.json_response(btc_meta())
+
+
+async def btc_source_upload(request):
+    if btc_task["task"] and not btc_task["task"].done():
+        raise web.HTTPConflict(text="a balance file is already being processed")
+    os.makedirs(BTC_DIR, exist_ok=True)
+    reader = await request.multipart()
+    field = await reader.next()
+    while field is not None and field.name != "file":
+        field = await reader.next()
+    if field is None:
+        raise web.HTTPBadRequest(text="no file field")
+    name = os.path.basename(field.filename or "balances.tsv")
+    ext = ".gz" if name.endswith(".gz") else (".csv" if name.endswith(".csv") else ".tsv")
+    path = os.path.join(BTC_DIR, "source" + (".tsv" + ext if ext == ".gz" else ext))
+    _btc_set(state="uploading", source_name=name, error=None)
+    n = 0
+    with open(path + ".part", "wb") as f:
+        while True:
+            chunk = await field.read_chunk(8 * 1024 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+            n += len(chunk)
+    os.replace(path + ".part", path)
+    _btc_set(source_bytes=n)
+    btc_task["task"] = asyncio.create_task(_btc_build(path, name))
+    return web.json_response(btc_meta())
+
+
+async def btc_source_url(request):
+    if btc_task["task"] and not btc_task["task"].done():
+        raise web.HTTPConflict(text="a balance file is already being processed")
+    body = await request.json()
+    url = str(body.get("url", ""))
+    if not url.startswith(("http://", "https://")):
+        raise web.HTTPBadRequest(text="url must be http(s)")
+    name = url.split("?")[0].split("/")[-1] or "balances.tsv"
+    path = os.path.join(BTC_DIR, "source.tsv.gz" if name.endswith(".gz") else "source.tsv")
+
+    async def run():
+        os.makedirs(BTC_DIR, exist_ok=True)
+        _btc_set(state="downloading", source_name=name, error=None, downloaded=0)
+        try:
+            timeout = aiohttp.ClientTimeout(total=None, sock_read=600)
+            async with aiohttp.ClientSession(timeout=timeout) as sess:
+                async with sess.get(url) as r:
+                    if r.status >= 400:
+                        raise RuntimeError(f"HTTP {r.status}")
+                    total, got, last = int(r.headers.get("content-length") or 0), 0, 0.0
+                    with open(path, "wb") as f:
+                        async for chunk in r.content.iter_chunked(4 * 1024 * 1024):
+                            f.write(chunk)
+                            got += len(chunk)
+                            if time.time() - last > 2:
+                                _btc_set(downloaded=got, download_total=total)
+                                last = time.time()
+            _btc_set(downloaded=got, source_bytes=got)
+        except Exception as e:  # noqa: BLE001
+            _btc_set(state="failed", error=f"download failed: {e}")
+            return
+        await _btc_build(path, name)
+
+    btc_task["task"] = asyncio.create_task(run())
+    return web.json_response(btc_meta())
 
 
 # ---------------- packed uploads (browser reads the file, sends only addresses) ----------------
@@ -257,8 +365,12 @@ async def run_job(jid):
         if job.get("first_column"):
             cmd.append("--first-column")
         log = open(os.path.join(run_dir, "log.txt"), "ab")
+        env = dict(os.environ)
+        if btc_meta().get("ready"):   # Bitcoin balances come from the uploaded dump: a join, no API calls
+            env.update(BTC_SNAPSHOT_PATH=BTC_PARQUET, CHAINSCAN_BTC_MODE="snapshot")
+            job["btc_source"] = btc_meta().get("source_name")
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=log, stderr=asyncio.subprocess.STDOUT,
-                                                    start_new_session=True)
+                                                    start_new_session=True, env=env)
         running.update(id=jid, proc=proc)
         rc = await proc.wait()
         log.close()
@@ -431,6 +543,9 @@ def main():
     app.router.add_get("/healthz", healthz)
     app.router.add_get("/static/{name}", static_file)
     app.router.add_get("/api/info", info)
+    app.router.add_get("/api/btc-source", btc_source_get)
+    app.router.add_post("/api/btc-source", btc_source_upload)
+    app.router.add_post("/api/btc-source/url", btc_source_url)
     app.router.add_post("/api/upload", upload)
     app.router.add_post("/api/packed", packed_create)
     app.router.add_get("/api/packed/find", packed_find)

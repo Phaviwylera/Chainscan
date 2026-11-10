@@ -27,7 +27,10 @@ class WriterAgent:
                 with open(p) as f:
                     for line in f:
                         out.write(line)
-                        addr, chain, sym, raw, _ = line.rstrip("\n").split(",")
+                        parts = line.rstrip("\n").split(",")
+                        if len(parts) != 5:
+                            continue
+                        addr, chain, sym, raw, _ = parts
                         k = (chain, sym)
                         totals[k] = totals.get(k, 0) + int(raw)
                         counts[k] = counts.get(k, 0) + 1

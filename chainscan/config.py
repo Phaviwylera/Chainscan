@@ -151,7 +151,8 @@ def load(path: str) -> Config:
             pin_block=bool(c.get("pin_block", True)),
             explorer=c.get("explorer", "")))
     b = raw.get("btc") or {}
-    btc = BtcCfg(enabled=bool(b.get("enabled", False)), mode=b.get("mode", "snapshot"),
+    btc = BtcCfg(enabled=bool(b.get("enabled", False)),
+                 mode=os.environ.get("CHAINSCAN_BTC_MODE") or b.get("mode", "snapshot"),
                  snapshot_path=b.get("snapshot_path", ""),
                  snapshot_address_column=b.get("snapshot_address_column", "address"),
                  snapshot_amount_column=b.get("snapshot_amount_column", "amount"),

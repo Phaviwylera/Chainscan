@@ -140,6 +140,14 @@ pre.log{margin:0;max-height:220px;overflow:auto;background:var(--bg);border:1px 
           <input type="text" id="jobName" placeholder="Name (optional)">
           <div class="row"><button class="primary" id="start">Start scan</button><button id="cancelUp" hidden>Cancel upload</button><span class="note" id="upMsg"></span></div>
         </section>
+        <section class="panel" id="btcPanel">
+          <div class="row" style="justify-content:space-between"><h2>Bitcoin balances</h2><span class="st" id="btcState">…</span></div>
+          <p class="note" id="btcInfo">Loading…</p>
+          <div class="bar" id="btcBar" hidden><i style="background:var(--btc)"></i></div>
+          <div class="row"><input type="file" id="btcFile" accept=".tsv,.csv,.gz,text/plain,text/csv,application/gzip" style="flex:1 1 200px;min-width:0"><button id="btcUp">Upload</button></div>
+          <div class="row"><input type="url" id="btcUrl" placeholder="…or a link to the .tsv / .tsv.gz dump" style="flex:1 1 200px;min-width:0"><button id="btcUrlBtn">Fetch</button></div>
+          <p class="note">Use Blockchair's daily dump <b>blockchair_bitcoin_addresses_and_balance_&lt;date&gt;.tsv</b> (address + balance). The server turns it into a lookup table once; after that, every Bitcoin scan is matched against it in seconds, without public APIs. Upload a newer dump any time to refresh.</p>
+        </section>
         <section class="panel">
           <div class="row" style="justify-content:space-between"><h2>Scans</h2><span class="note" id="jobCount"></span></div>
           <div class="jobs" id="jobs"><div class="empty">No scans yet. Start one above.</div></div>
@@ -198,6 +206,7 @@ pre.log{margin:0;max-height:220px;overflow:auto;background:var(--bg);border:1px 
     $("chainBox").innerHTML = keys.map(([k,n]) => `<label class="chip"><input type="checkbox" value="${k}" checked><span class="dot" style="background:var(${VARS[k]||"--accent"})"></span>${esc(n)}</label>`).join("");
     if(!viz && window.Scan3D) viz = new window.Scan3D($("viz3d"), $("vizTip"));
     vizIdle();
+    btcRefresh();
     refresh(); clearInterval(pollT); pollT = setInterval(refresh, 2000);
   }
   const chainKeys = () => [...info.chains.map(c => [c.key, c.name]), ...(info.btc.enabled ? [["btc","Bitcoin"]] : [])];
@@ -472,6 +481,41 @@ pre.log{margin:0;max-height:220px;overflow:auto;background:var(--bg);border:1px 
     $("dLog").innerHTML = d.log.length ? `<div class="lbl" style="margin-bottom:6px">Log</div><pre class="log">${esc(d.log.join("\n"))}</pre>` : "";
     const nl = $("dLog").querySelector("pre"); if(nl && atBottom) nl.scrollTop = nl.scrollHeight;
   }
+
+  // ---------- Bitcoin balance source ----------
+  let btcUploading = false;
+  async function btcRefresh(){
+    let m; try{ m = await api("/api/btc-source"); }catch{ return; }
+    const st = $("btcState"), inf = $("btcInfo");
+    const state = btcUploading ? "uploading" : (m.ready && m.state === "ready") ? "ready" : (m.state || "none");
+    st.className = "st " + ({ready:"done", failed:"failed", none:"stopped"}[state] || "running");
+    st.textContent = state === "none" ? "not set" : state;
+    if(state === "ready") inf.innerHTML = `Using <b>${esc(m.source_name)}</b>: ${fmt(m.rows)} addresses, ${esc(m.total_btc)} BTC total, built ${when(m.built_at)}. Bitcoin scans use this file.`;
+    else if(state === "building") inf.textContent = `Building the lookup table from ${m.source_name || "the file"} (a few minutes for crores of rows)…`;
+    else if(state === "downloading") inf.textContent = `Server is downloading ${m.source_name}: ${mb(m.downloaded || 0)}${m.download_total ? " / " + mb(m.download_total) : ""}`;
+    else if(state === "failed") inf.innerHTML = `<span class="err">${esc(m.error || "failed")}</span>`;
+    else if(state === "uploading") {}
+    else inf.textContent = "Not set: Bitcoin addresses are checked one by one through public APIs, which are very slow and rate limited. Upload a balance dump below.";
+  }
+  $("btcUp").onclick = () => {
+    const f = $("btcFile").files[0]; if(!f){ $("btcInfo").textContent = "Choose the .tsv file first."; return; }
+    const fd = new FormData(); fd.append("file", f);
+    const x = new XMLHttpRequest(); x.open("POST", "/api/btc-source"); x.setRequestHeader("X-Access-Token", token);
+    btcUploading = true; $("btcBar").hidden = false; const m = meter();
+    x.upload.onprogress = e => { if(e.lengthComputable){ m.push(e.loaded); const r = m.rate();
+      $("btcBar").firstElementChild.style.width = (e.loaded / e.total * 100).toFixed(1) + "%";
+      $("btcInfo").textContent = `Uploading ${mb(e.loaded)} / ${mb(e.total)} · ${mb(r)}/s · ETA ${secs(r ? (e.total - e.loaded) / r : null)}`; } };
+    x.onload = () => { btcUploading = false; $("btcBar").hidden = true; window.onbeforeunload = null; if(x.status >= 300) $("btcInfo").textContent = x.responseText; btcRefresh(); };
+    x.onerror = () => { btcUploading = false; $("btcBar").hidden = true; window.onbeforeunload = null; $("btcInfo").textContent = "Upload interrupted. Try again, or give a link instead."; };
+    window.onbeforeunload = () => "The balance file is still uploading.";
+    x.send(fd);
+  };
+  $("btcUrlBtn").onclick = async () => {
+    const u = $("btcUrl").value.trim(); if(!u) return;
+    try{ await post("/api/btc-source/url", {url: u}); $("btcUrl").value = ""; }catch(e){ $("btcInfo").textContent = e.message; }
+    btcRefresh();
+  };
+  setInterval(() => { if(token && !$("main").hidden) btcRefresh(); }, 3000);
   boot();
 })();
 </script>

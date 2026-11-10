@@ -65,6 +65,7 @@ class BtcAgent:
         log(f"btc: joining {self.total:,} addresses against {self.c.snapshot_path}")
         con = duckdb.connect()
         con.execute("PRAGMA threads=%d" % (os.cpu_count() or 2))
+        con.execute(f"PRAGMA memory_limit='{os.environ.get('CHAINSCAN_DUCKDB_MEMORY', '3GB')}'")
         files = [p.replace("'", "''") for p in bucket_files]
         lst = "[" + ",".join(f"'{p}'" for p in files) + "]"
         con.execute(f"CREATE TABLE inp AS SELECT DISTINCT column0 AS address FROM read_csv({lst}, "
@@ -73,13 +74,15 @@ class BtcAgent:
         mult = "1" if self.c.snapshot_amount_unit == "sats" else "100000000"
         snap = self.c.snapshot_path.replace("'", "''")
         out = os.path.join(self.out_dir, "snapshot.csv").replace("'", "''")
+        if self.c.snapshot_path.endswith(".parquet"):   # built by btcsource.build: address, sats
+            source = f"SELECT address, CAST(sats AS BIGINT) AS sats FROM read_parquet('{snap}')"
+        else:                                           # raw CSV/TSV dump: aggregate on the fly
+            source = f"""SELECT CASE WHEN lower("{acol}") LIKE 'bc1%' THEN lower("{acol}") ELSE "{acol}" END AS address,
+                       SUM(CAST(ROUND(CAST("{mcol}" AS DOUBLE) * {mult}) AS HUGEINT)) AS sats
+                FROM read_csv('{snap}', header=true, auto_detect=true) GROUP BY 1"""
         con.execute(f"""
             COPY (
-              WITH s AS (
-                SELECT CASE WHEN lower("{acol}") LIKE 'bc1%' THEN lower("{acol}") ELSE "{acol}" END AS address,
-                       SUM(CAST(ROUND(CAST("{mcol}" AS DOUBLE) * {mult}) AS HUGEINT)) AS sats
-                FROM read_csv('{snap}', header=true, auto_detect=true)
-                GROUP BY 1)
+              WITH s AS ({source})
               SELECT i.address, 'btc' AS chain, 'BTC' AS asset, s.sats AS raw
               FROM inp i JOIN s USING (address) WHERE s.sats > 0
             ) TO '{out}' (HEADER false)""")
