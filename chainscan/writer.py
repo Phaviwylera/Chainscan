@@ -26,10 +26,10 @@ class WriterAgent:
             for p in sorted(glob.glob(os.path.join(self.dir, "results", "*", "*.csv"))):
                 with open(p) as f:
                     for line in f:
-                        out.write(line)
                         parts = line.rstrip("\n").split(",")
                         if len(parts) != 5:
                             continue
+                        out.write(line)
                         addr, chain, sym, raw, _ = parts
                         k = (chain, sym)
                         totals[k] = totals.get(k, 0) + int(raw)
